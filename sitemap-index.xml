@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://sandroalvoz.github.io/sitemap-pages.xml</loc>
+    <lastmod>2026-10-26T21:16:08.176Z</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://sandroalvoz.github.io/sitemap-posts.xml</loc>
+    <lastmod>2026-10-26T21:16:08.176Z</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://sandroalvoz.github.io/sitemap-series.xml</loc>
+    <lastmod>2026-10-26T21:16:08.176Z</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>https://sandroalvoz.github.io/sitemap-taxonomies.xml</loc>
+    <lastmod>2026-10-26T21:16:08.176Z</lastmod>
+  </sitemap>
+</sitemapindex>

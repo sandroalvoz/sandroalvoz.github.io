@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /favicon/
+Disallow: /Link/
+Disallow: /audio/
+Disallow: /go/
+Disallow: /*?tag=*
+Disallow: /*?category=*
+Disallow: /*?uncategorized=*
+Sitemap: https://sandroalvoz.github.io//sitemap-index.xml

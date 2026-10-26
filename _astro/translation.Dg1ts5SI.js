@@ -1,0 +1,1 @@
+import{s}from"./config.BrTyokiu.js";import{e as t,a as e}from"./es.CPV56rh2.js";const a=t,r={en:t,en_us:t,en_gb:t,en_au:t,es:e};function i(t){return r[t.toLowerCase()]||a}function c(t){return i(s.lang)[t]??a[t]??t}export{c as i};
