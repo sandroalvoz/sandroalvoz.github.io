@@ -1,1 +1,0 @@
-import{b as a,b1 as o}from"./mermaid.core.DneRNi_M.js";var b=a((e,a)=>{let t;return"sandbox"===a&&(t=o("#i"+e)),o("sandbox"===a?t.nodes()[0].contentDocument.body:"body").select(`[id="${e}"]`)},"getDiagramElement");export{b as g};

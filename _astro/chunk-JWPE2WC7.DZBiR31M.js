@@ -1,0 +1,1 @@
+import{b as i}from"./mermaid.core.DCAYB-Ar.js";function t(t,c){t.accDescr&&c.setAccDescription?.(t.accDescr),t.accTitle&&c.setAccTitle?.(t.accTitle),t.title&&c.setDiagramTitle?.(t.title)}i(t,"populateCommonDb");export{t as p};

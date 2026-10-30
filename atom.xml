@@ -30,7 +30,7 @@
 </ul>
 <p>Cada nivel depende del anterior y nunca al revés. Es la misma idea que el modelo TCP/IP: la capa de aplicación usa la de transporte, pero la de transporte no sabe qué aplicación hay encima. Un ensamblado es la forma que tiene Unity de convertir esas capas en algo que el compilador hace cumplir.</p>
 <h2>Qué es un ensamblado</h2>
-<p>Un ensamblado es una unidad de compilación: un <code>.dll</code> con un grupo de scripts. En Unity se crea con <strong>Project → clic derecho → Create → Scripting → Assembly Definition</strong>, que genera un archivo <code>.asmdef</code>.</p>
+<p>Un :term[ensamblado] es una unidad de compilación: un <code>.dll</code> con un grupo de scripts. En Unity se crea con <strong>Project → clic derecho → Create → Scripting → Assembly Definition</strong>, que genera un archivo <code>.asmdef</code>.</p>
 <p>La regla de pertenencia es sencilla: <strong>cada script pertenece al <code>.asmdef</code> más cercano subiendo por sus carpetas</strong>. Si no hay ninguno, va a <code>Assembly-CSharp</code>.</p>
 <p>:::quiz[Tienes <code>Assets/Scripts/Game.asmdef</code> y <code>Assets/Scripts/Core/Core.asmdef</code>. ¿A qué ensamblado pertenece <code>Assets/Scripts/Core/Player/PlayerController.cs</code>?]</p>
 <ul>
@@ -41,7 +41,7 @@
 </ul>
 <p>Unity sube carpeta a carpeta desde el script y se queda con el primer <code>.asmdef</code> que encuentra: <code>Player/</code> no tiene ninguno, <code>Core/</code> sí. Un script nunca pertenece a dos ensamblados.
 :::</p>
-<p>Para que un ensamblado use código de otro, hay que añadir el segundo a sus <strong>referencias</strong> (en el Inspector del <code>.asmdef</code>). Es el equivalente a un <code>using</code>, pero a nivel de proyecto: sin la referencia, el <code>using</code> no compila.</p>
+<p>Para que un ensamblado use código de otro, hay que añadir el segundo a sus <strong>referencias</strong> (en el :term[Inspector] del <code>.asmdef</code>). Es el equivalente a un <code>using</code>, pero a nivel de proyecto: sin la referencia, el <code>using</code> no compila.</p>
 <h2>Por qué compila más rápido</h2>
 <p>Cuando modificas un script, Unity recompila <strong>su ensamblado y todos los que dependen de él</strong>. El resto se reutiliza.</p>
 <p>De ahí sale una consecuencia práctica: tocar una capa baja es más caro que tocar una alta, porque arrastra a todo lo que tiene encima. Las capas bajas deberían ser las que menos cambian.</p>
@@ -54,7 +54,7 @@
 <p>Un cambio en <code>Dependencies</code> obliga a recompilar <code>Dependencies</code>, <code>Core</code> e <code>Implementations</code>. Un cambio en <code>Implementations</code> solo recompila <code>Implementations</code>, porque nadie depende de él.
 :::</p>
 <p>:::note
-Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la recarga del dominio (<em>domain reload</em>) que hace el editor justo después: esa sigue ocurriendo entera. La recarga al entrar en Play Mode sí se puede desactivar, desde <em>Project Settings → Editor → Enter Play Mode Settings</em>.
+Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la recarga del dominio (:term[<em>domain reload</em>]{id=“domain-reload”}) que hace el editor justo después: esa sigue ocurriendo entera. La recarga al entrar en Play Mode sí se puede desactivar, desde <em>Project Settings → Editor → Enter Play Mode Settings</em>.
 :::</p>
 <h2>La regla que no se puede romper</h2>
 <p>Las referencias entre ensamblados tienen que formar una cadena sin ciclos. Si <code>Core</code> referencia a <code>Implementations</code> e <code>Implementations</code> referencia a <code>Core</code>, Unity no puede decidir cuál compilar primero y la compilación falla.</p>
@@ -62,10 +62,10 @@ Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la 
 <p>:::quiz[Una clase de <code>Core</code> necesita llamar a un método de <code>Implementations</code>, que está por encima. ¿Qué haces?]</p>
 <ul>
 <li>[ ] Añadir <code>Implementations</code> a las referencias de <code>Core</code></li>
-<li>[x] Definir una interfaz en <code>Core</code> y hacer que <code>Implementations</code> la implemente</li>
+<li>[x] Definir una :term[interfaz] en <code>Core</code> y hacer que <code>Implementations</code> la implemente</li>
 <li>[ ] Mover todo a <code>Assembly-CSharp</code></li>
 </ul>
-<p>La primera opción crea un ciclo, porque <code>Implementations</code> ya referencia a <code>Core</code>. La segunda es inversión de dependencias: <code>Core</code> define lo que necesita (la interfaz) y la capa superior aporta la implementación. <code>Core</code> sigue sin saber que <code>Implementations</code> existe.
+<p>La primera opción crea un ciclo, porque <code>Implementations</code> ya referencia a <code>Core</code>. La segunda es :term[inversión de dependencias]: <code>Core</code> define lo que necesita (la interfaz) y la capa superior aporta la implementación. <code>Core</code> sigue sin saber que <code>Implementations</code> existe.
 :::</p>
 <h2>Una estructura que funciona</h2>
 <p>Esta es la división que uso. Cada flecha significa “depende de”, así que la base queda abajo.</p>
@@ -112,7 +112,7 @@ Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la 
 <p>Unity Test Framework necesita los ensamblados: los tests viven en su propio ensamblado de test, que referencia al ensamblado que quiere probar. Así se mantiene la misma cadena de dependencias en una sola dirección, y el código de test (y NUnit) nunca entra en la build.</p>
 <p>El problema típico aparece en cuanto quieres probar algo que no es público. Hay tres salidas:</p>
 <ul>
-<li><strong>Reflexión</strong>: acceder a miembros privados por su nombre en texto. El compilador no comprueba nada: si renombras el campo, el test sigue compilando y falla en ejecución. No lo recomiendo.</li>
+<li><strong>:term[Reflexión]</strong>: acceder a miembros privados por su nombre en texto. El compilador no comprueba nada: si renombras el campo, el test sigue compilando y falla en ejecución. No lo recomiendo.</li>
 <li><strong><code>SendMessage</code> u otras APIs de Unity</strong>: metes el motor como intermediario. El test pasa a depender del ciclo de vida de Unity y deja de ser unitario.</li>
 <li><strong><code>internal</code> + <code>InternalsVisibleTo</code></strong>: lo que no debe ser público se declara <code>internal</code>, y el ensamblado de producción declara qué ensamblados de test pueden verlo. Es la opción que uso.</li>
 </ul>
@@ -175,7 +175,7 @@ Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la 
         _stacks.TryGetValue(itemId, out int c) ? c : 0;
 }
 </code></pre>
-<p>Una clase de C# pura: sin <code>MonoBehaviour</code>, sin dependencias del motor. Es exactamente el tipo de código que merece un test unitario.</p>
+<p>Una :term[clase de C# pura]{id=“clase-pura”}: sin :term[<code>MonoBehaviour</code>]{id=“monobehaviour”}, sin dependencias del motor. Es exactamente el tipo de código que merece un :term[test unitario].</p>
 <p><a href="#L8"><code>UsedSlots</code></a> no le interesa a nadie del juego, pero es justo lo que quiero comprobar: que dos objetos iguales ocupan una sola casilla. Por eso es <code>internal</code> y no <code>public</code>.
 :::</p>
 <p>:::step{title=“El ensamblado de test”}</p>
@@ -267,11 +267,11 @@ public class InventoryTests
         <link href="https://sandroalvoz.github.io/posts/singleton-service-locator-inyeccion/"/>
         <updated>2026-10-25T00:00:00.000Z</updated>
         <summary type="html"><![CDATA[Tres soluciones a un mismo problema: el acceso a las dependencias]]></summary>
-        <content type="html"><![CDATA[<p>Casi todo el código de un juego necesita algo que no crea él mismo: un arma necesita una pool de proyectiles, un enemigo necesita el sistema de audio, la interfaz necesita el inventario. La pregunta es siempre la misma: <strong>¿cómo llega esa referencia hasta la clase que la usa?</strong></p>
-<p>En Unity hay tres respuestas habituales: singleton, Service Locator e inyección de dependencias. Las tres funcionan. La diferencia está en qué problemas te dejan resueltos y cuáles te dejan para más adelante.</p>
+        <content type="html"><![CDATA[<p>Casi todo el código de un juego necesita algo que no crea él mismo: un arma necesita una :term[pool] de proyectiles, un enemigo necesita el sistema de audio, la interfaz necesita el inventario. La pregunta es siempre la misma: <strong>¿cómo llega esa referencia hasta la clase que la usa?</strong></p>
+<p>En Unity hay tres respuestas habituales: :term[singleton], :term[Service Locator] e :term[inyección de dependencias]. Las tres funcionan. La diferencia está en qué problemas te dejan resueltos y cuáles te dejan para más adelante.</p>
 <h2>Dos principios antes de empezar</h2>
 <h3>Inversión de dependencias</h3>
-<p>El principio de inversión de dependencias dice que una clase no debería depender de una implementación concreta, sino de una <strong>abstracción</strong> que ella misma define. Se ve mejor con un ejemplo: una pool de objetos.</p>
+<p>El principio de :term[inversión de dependencias] dice que una clase no debería depender de una :term[implementación concreta], sino de una <strong>:term[abstracción]</strong> que ella misma define. Se ve mejor con un ejemplo: una pool de objetos.</p>
 <p>::::walkthrough{title=“Una pool que no sabe qué guarda”}</p>
 <p>:::step{title=“La abstracción”}</p>
 <pre><code class="language-csharp">public interface IPoolable
@@ -308,7 +308,7 @@ public class InventoryTests
 }
 </code></pre>
 <p>La pool funciona con <a href="#L1">cualquier <code>IPoolable</code></a>. Reutiliza los objetos libres y solo <a href="#L10">instancia uno nuevo</a> cuando no queda ninguno.</p>
-<p><code>Pool&lt;T&gt;</code> no conoce ningún tipo del juego, así que puede vivir junto a <code>IPoolable</code> en el ensamblado más bajo del proyecto (<code>Dependencies</code>) y llevarse a cualquier otro proyecto.
+<p><code>Pool&lt;T&gt;</code> no conoce ningún tipo del juego, así que puede vivir junto a <code>IPoolable</code> en el :term[ensamblado] más bajo del proyecto (<code>Dependencies</code>) y llevarse a cualquier otro proyecto.
 :::</p>
 <p>:::step{title=“La implementación”}</p>
 <pre><code class="language-csharp">public class Projectile : MonoBehaviour, IPoolable
@@ -351,8 +351,8 @@ public class InventoryTests
 <p>La pool solo conoce <code>IPoolable</code>, que está en su mismo ensamblado. Quien necesita al otro es el proyectil. Una referencia mutua sería un ciclo y el proyecto no compilaría.
 :::</p>
 <h3>Inversión de control</h3>
-<p>Queda otro problema: <strong>cómo llegan las dependencias</strong> a los objetos que las usan. Un arma podría crear y gestionar su propia pool, pero entonces cada arma tendría la suya y perderíamos la reutilización. La salida habitual es un singleton, que trae sus propios problemas.</p>
-<p>La <strong>inversión de control</strong> consiste en que un objeto delegue en un elemento externo el control de algo que antes hacía él mismo. El Service Locator y la inyección de dependencias aplican esta idea a la obtención de dependencias. Por eso son alternativas al singleton.</p>
+<p>Queda otro problema: <strong>cómo llegan las :term[dependencias]</strong> a los objetos que las usan. Un arma podría crear y gestionar su propia pool, pero entonces cada arma tendría la suya y perderíamos la reutilización. La salida habitual es un singleton, que trae sus propios problemas.</p>
+<p>La <strong>:term[inversión de control]</strong> consiste en que un objeto delegue en un elemento externo el control de algo que antes hacía él mismo. El Service Locator y la inyección de dependencias aplican esta idea a la obtención de dependencias. Por eso son alternativas al singleton.</p>
 <h2>Los problemas del singleton</h2>
 <p>El singleton asegura que solo exista una instancia de una clase y ofrece acceso global a ella. En Unity suele tener esta forma:</p>
 <p>::::walkthrough{title=“El singleton típico de Unity”}</p>
@@ -383,21 +383,21 @@ public class InventoryTests
 <p>Es muy sencillo de escribir, pero tiene cuatro problemas:</p>
 <ol>
 <li><strong>Es poco flexible.</strong> <a href="#L3">Una instancia estática</a> asume que solo habrá una pool en todo el juego. En cuanto haya más objetos reutilizables, el número de singletons se dispara, y una misma clase acaba accediendo a varios.</li>
-<li><strong>No se puede sustituir.</strong> Quien lo usa depende de la clase concreta, no de una abstracción. En un test hay que crear el singleton real con todas sus dependencias, y el test unitario se convierte en uno de integración.</li>
-<li><strong>Las dependencias son implícitas.</strong> Nada en la firma de una clase dice que usa la pool: la llamada está dentro de algún método. Y desde el singleton tampoco hay forma sencilla de saber quién lo usa.</li>
-<li><strong>El ciclo de vida.</strong> Por concepto, un singleton existe siempre, pero eso no siempre encaja con las escenas del juego. Si alguien lo pide antes de su <code>Awake</code>, o en una escena donde no está, obtiene <code>null</code>. Además, si una escena trae otra copia, hay que <a href="#L10-14">destruir el duplicado</a>. Y con <a href="#L16"><code>DontDestroyOnLoad</code></a> puede seguir vivo cuando ya no debería.
+<li><strong>No se puede sustituir.</strong> Quien lo usa depende de la clase concreta, no de una abstracción. En un test hay que crear el singleton real con todas sus dependencias, y el :term[test unitario] se convierte en uno de :term[integración]{id=“test-de-integracion”}.</li>
+<li><strong>Las dependencias son implícitas.</strong> Nada en la :term[firma] de una clase dice que usa la pool: la llamada está dentro de algún método. Y desde el singleton tampoco hay forma sencilla de saber quién lo usa.</li>
+<li><strong>El :term[ciclo de vida].</strong> Por concepto, un singleton existe siempre, pero eso no siempre encaja con las escenas del juego. Si alguien lo pide antes de su <code>Awake</code>, o en una escena donde no está, obtiene <code>null</code>. Además, si una escena trae otra copia, hay que <a href="#L10-14">destruir el duplicado</a>. Y con <a href="#L16"><code>DontDestroyOnLoad</code></a> puede seguir vivo cuando ya no debería.
 :::</li>
 </ol>
 <p>::::</p>
 <h2>El punto de partida</h2>
-<p>A partir de aquí, el arma no va a depender de la clase <code>ProjectilePool</code>, sino de una interfaz que describe lo que necesita:</p>
+<p>A partir de aquí, el arma no va a depender de la clase <code>ProjectilePool</code>, sino de una :term[interfaz] que describe lo que necesita:</p>
 <pre><code class="language-csharp">public interface IProjectilePool
 {
     Projectile Get();
     void Release(Projectile projectile);
 }
 </code></pre>
-<p>Y una implementación que puede ser una clase de C# pura, sin <code>MonoBehaviour</code> ni instancia estática:</p>
+<p>Y una implementación que puede ser una :term[clase de C# pura]{id=“clase-pura”}, sin :term[<code>MonoBehaviour</code>]{id=“monobehaviour”} ni instancia estática:</p>
 <pre><code class="language-csharp">public class ProjectilePool : IProjectilePool
 {
     private readonly Pool&lt;Projectile&gt; _pool;
@@ -423,7 +423,7 @@ public class InventoryTests
     }
 }
 </code></pre>
-<p>La versión más corta. <a href="#L7"><code>ProjectilePool.Instance</code></a> es una propiedad estática: cualquiera puede llegar a la pool desde cualquier sitio.</p>
+<p>La versión más corta. <a href="#L7"><code>ProjectilePool.Instance</code></a> es una :term[propiedad estática]: cualquiera puede llegar a la pool desde cualquier sitio.</p>
 <p>Aquí se ven los problemas de la sección anterior desde el lado de quien usa el singleton:</p>
 <ul>
 <li><strong>La dependencia está escondida</strong> dentro de <code>Fire()</code>. Mirando la firma de <code>Weapon</code> no hay forma de saber que necesita una pool.</li>
@@ -505,9 +505,9 @@ public class GameLifetimeScope : LifetimeScope
     }
 }
 </code></pre>
-<p>La pieza que faltaba. Un <code>LifetimeScope</code> es el contexto donde se registran los servicios.</p>
+<p>La pieza que faltaba. Un :term[<code>LifetimeScope</code>]{id=“lifetimescope”} es el contexto donde se registran los servicios.</p>
 <ul>
-<li><a href="#L11-12">Esta línea</a> dice: cuando alguien pida <code>IProjectilePool</code>, dale un <code>ProjectilePool</code>, crea uno solo para este contenedor y pásale el prefab al constructor.</li>
+<li><a href="#L11-12">Esta línea</a> dice: cuando alguien pida <code>IProjectilePool</code>, dale un <code>ProjectilePool</code>, crea uno solo para este :term[contenedor] y pásale el :term[prefab] al constructor.</li>
 <li><a href="#L14"><code>RegisterComponentInHierarchy</code></a> busca el <code>Weapon</code> de la escena y le inyecta sus dependencias desde el <code>Awake</code> del scope, que se ejecuta antes que el resto.</li>
 </ul>
 <p><code>Lifetime.Singleton</code> aquí no es el patrón singleton: hay <strong>una instancia por contenedor</strong>, sin acceso global.
@@ -519,10 +519,10 @@ public class GameLifetimeScope : LifetimeScope
 <li>[x] Porque la pool se registra en su propio <code>Awake</code>, y Unity no garantiza el orden entre los <code>Awake</code> de distintos objetos</li>
 <li>[ ] Porque <code>Start</code> se ejecuta en cada frame y así la referencia siempre está actualizada</li>
 </ul>
-<p>Todos los <code>Awake</code> de la escena se ejecutan antes que cualquier <code>Start</code>, así que pedirla en <code>Start</code> asegura que la pool ya está registrada. Es un parche que funciona, pero depende del orden de ejecución. La inyección de dependencias elimina este problema.
+<p>Todos los <code>Awake</code> de la escena se ejecutan antes que cualquier <code>Start</code>, así que pedirla en <code>Start</code> asegura que la pool ya está registrada. Es un parche que funciona, pero depende del :term[orden de ejecución]. La inyección de dependencias elimina este problema.
 :::</p>
 <h2>Service Locator, más a fondo</h2>
-<p>Un Service Locator ofrece un punto de acceso global a un <strong>servicio</strong> (la abstracción de un conjunto de operaciones) sin atar a sus usuarios a la clase que lo implementa. En la práctica es un registro: guarda cada servicio asociado a un tipo, y los usuarios piden el tipo que necesitan.</p>
+<p>Un Service Locator ofrece un punto de acceso global a un <strong>:term[servicio]</strong> (la abstracción de un conjunto de operaciones) sin atar a sus usuarios a la clase que lo implementa. En la práctica es un registro: guarda cada servicio asociado a un tipo, y los usuarios piden el tipo que necesitan.</p>
 <p>Consta de tres partes: un diccionario que asocia tipos a servicios, métodos para registrar y retirar servicios, y métodos para consultarlos. Una versión mínima:</p>
 <pre><code class="language-csharp">public static class ServiceLocator
 {
@@ -548,16 +548,16 @@ public class GameLifetimeScope : LifetimeScope
 <li><strong>Flexibilidad:</strong> el registro puede vivir en un ensamblado bajo, porque no necesita conocer ningún tipo concreto del proyecto.</li>
 <li><strong>Sustitución:</strong> los usuarios dependen de una abstracción. Los cambios en el servicio les afectan menos, y en un test se puede registrar uno falso.</li>
 <li><strong>Dependencias implícitas:</strong> siguen siendo un problema.</li>
-<li><strong>Ciclo de vida:</strong> desaparecen los duplicados, y la existencia de los servicios pasa a gestionarla un elemento externo. Normalmente un <em>bootstrapper</em> los crea y el propio Service Locator los retira. El orden sigue importando, pero es más fácil de controlar porque todo pasa por un único punto.</li>
+<li><strong>Ciclo de vida:</strong> desaparecen los duplicados, y la existencia de los servicios pasa a gestionarla un elemento externo. Normalmente un :term[<em>bootstrapper</em>]{id=“bootstrapper”} los crea y el propio Service Locator los retira. El orden sigue importando, pero es más fácil de controlar porque todo pasa por un único punto.</li>
 </ul>
 <p>Hay variantes. La que yo usaba tenía una <strong>jerarquía de registros</strong>: uno global y otro por escena. Así se controla por separado qué servicios son de todo el juego y cuáles solo de una escena, y los de escena se retiran solos al descargarla.</p>
 <h2>Inyección de dependencias, más a fondo</h2>
 <p>En la inyección de dependencias, una clase <strong>recibe</strong> las referencias que necesita desde fuera, en lugar de crearlas o buscarlas ella misma. La forma más directa es el constructor. Si una clase recibe sus dependencias como parámetros, es imposible crearla sin ellas, y cualquiera que lea su firma sabe qué necesita.</p>
 <p>La diferencia con el Service Locator es de dirección: allí el usuario <strong>pide</strong> el servicio a un registro; aquí se le <strong>entrega</strong> sin que lo pida ni sepa que existe un registro.</p>
 <h3>El problema de Unity: no hay constructores</h3>
-<p>Los componentes <code>MonoBehaviour</code> los instancia el motor, así que no pueden recibir nada por constructor. Las alternativas sin framework tienen pegas:</p>
+<p>Los componentes <code>MonoBehaviour</code> los instancia el motor, así que no pueden recibir nada por constructor. Las alternativas sin :term[framework] tienen pegas:</p>
 <ul>
-<li><strong>Asignar las referencias a mano en el Inspector</strong> (<code>[SerializeField]</code>). Es viable, pero difícil de mantener cuando el proyecto crece. Además, el Inspector no serializa interfaces, ni referencias a objetos de otras escenas, ni objetos creados durante la partida.</li>
+<li><strong>Asignar las referencias a mano en el :term[Inspector]</strong> (<code>[SerializeField]</code>). Es viable, pero difícil de mantener cuando el proyecto crece. Además, el Inspector no :term[serializa] interfaces, ni referencias a objetos de otras escenas, ni objetos creados durante la partida.</li>
 <li><strong>Un método <code>Setup()</code> como pseudoconstructor.</strong> Nada garantiza que alguien llame a ese método. Y por el ciclo de vida de Unity, <code>Awake</code> y <code>OnEnable</code> se ejecutan antes que él, así que todavía no tienen las referencias.</li>
 </ul>
 <p>:::quiz[¿Qué problemas tiene inicializar un <code>MonoBehaviour</code> con un método <code>Setup()</code> que llama otro objeto? (Marca todas las correctas.)]</p>
@@ -594,7 +594,7 @@ public class GameLifetimeScope : LifetimeScope
 <p>Además, VContainer puede conectar <strong>clases de C# puras</strong> con el ciclo de vida de Unity mediante las interfaces <code>IStartable</code> y <code>ITickable</code>. No hace falta un <code>MonoBehaviour</code> solo para tener un <code>Update</code>.</p>
 <h2>Bootstrappers</h2>
 <p>En informática, <em>bootstrap</em> es la secuencia de arranque de un ordenador. En un juego, un <strong>bootstrapper</strong> es el elemento que se encarga de inicializar un sistema o servicio. Guarda las referencias necesarias y decide cómo se registran en el contenedor que toque. Sirve tanto para Service Locator como para inyección de dependencias.</p>
-<p>En una aplicación tradicional, todos los objetos se construyen y conectan en un único punto de entrada: la <strong>raíz de composición</strong>. En Unity, mucho de lo que se necesita se configura en el Inspector (referencias, <em>Scriptable Objects</em>, prefabs), y el contenedor no puede llegar a esa información por sí mismo, mucho menos si es una clase pura. El bootstrapper hace de puente entre el Inspector y el modelo de inversión de control que uses.</p>
+<p>En una aplicación tradicional, todos los objetos se construyen y conectan en un único punto de entrada: la <strong>:term[raíz de composición]</strong>. En Unity, mucho de lo que se necesita se configura en el Inspector (referencias, :term[<em>Scriptable Objects</em>]{id=“scriptable-object”}, prefabs), y el contenedor no puede llegar a esa información por sí mismo, mucho menos si es una clase pura. El bootstrapper hace de puente entre el Inspector y el modelo de inversión de control que uses.</p>
 <p>Yo los divido según su función para que sean más manejables: uno para el gameplay, otro para el audio, etc.</p>
 <p>::::walkthrough{title=“Un bootstrapper con cada enfoque”}</p>
 <p>:::step{title=“Con Service Locator”}</p>
