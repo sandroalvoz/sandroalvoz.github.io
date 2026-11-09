@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://sandroalvoz.github.io/</id>
     <title>Sandro Alvoz</title>
-    <updated>2026-10-25T00:00:00.000Z</updated>
+    <updated>2026-11-09T00:00:00.000Z</updated>
     <generator>Astro - Feed Library</generator>
     <author>
         <name>Sandro Alvoz</name>
@@ -14,6 +14,489 @@
     <subtitle>Portfolio Personal</subtitle>
     <icon>https://sandroalvoz.github.io/favicon.ico</icon>
     <rights>All rights reserved 2026, Sandro Alvoz</rights>
+    <entry>
+        <title type="html"><![CDATA[Guardar partidas en JSON cuando parte de tu estado son Scriptable Objects]]></title>
+        <id>https://sandroalvoz.github.io/posts/sistema-guardado/</id>
+        <link href="https://sandroalvoz.github.io/posts/sistema-guardado/"/>
+        <updated>2026-11-09T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Cómo diseñé el sistema de guardado de Super Poky Racers: por qué JSON, qué información se guarda y cómo se estructura, y cómo escribir en un archivo referencias a Scriptable Objects.]]></summary>
+        <content type="html"><![CDATA[<p>Guardar y cargar partida suena como uno de los sistemas más simples, y en muchos casos, necesarios, de un juego. Sin embargo, es muy importante tener varias cosas claras:</p>
+<ul>
+<li><strong>en qué formato</strong> se guarda</li>
+<li><strong>qué información</strong> debe sobrevivir al cerrar el juego</li>
+<li><strong>cómo se traduce</strong> lo que el juego tiene en memoria a algo que se pueda escribir en un archivo.</li>
+</ul>
+<p>En el caso de <a href="/projects/super-poky-racers/">Super Poky Racers</a>, había una dificultad añadida: una gran parte de lo que el jugador consigue (objetos, equipamiento) son :term[Scriptable Objects]{id=“scriptable-object”}. Éstos son assets del proyecto, y un archivo no puede guardar un asset de la misma manera en que guarda un <code>int</code> o un <code>string</code>. En esta publicación, veremos las distintas complicaciones y técnicas para crear un sistema de guardado.</p>
+<h2>Tres formas de guardar una partida</h2>
+<h3>La base común: los datos son un objeto</h3>
+<p>Antes de comparar opciones, cabe mencionar que todas ellas tienen algo en común y que debemos tener en cuenta: <strong>la información que se guarda es un objeto</strong>.</p>
+<p>Siguiendo los principios de la :term[programación orientada a objetos], los datos que deben sobrevivir al cerrar el juego se agrupan en una clase. Mientras se juega, el juego trabaja con una instancia de esa clase. Guardar consiste en escribir sobre esa instancia, mientras que cargar una partida es el proceso inverso: leer lo escrito y reconstruir una instancia a partir de su información.</p>
+<p>Para comparar las tres opciones, usaremos la misma clase:</p>
+<pre><code class="language-csharp">[Serializable]
+public class PlayerProgress
+{
+    public int currency;
+    public GameStage currentStage;
+    public List&lt;ItemId&gt; unlockedItems = new();
+}
+</code></pre>
+<p>Lo que cambia entre una opción y otra no es el objeto, sino <strong>dónde y cómo se escribe</strong>: en un asset del proyecto, en bytes o en texto.</p>
+<pre><code class="language-mermaid">graph LR
+  O["Instancia de PlayerProgress"] --&gt;|"Unity, solo en el editor"| A[".asset de un Scriptable Object"]
+  O --&gt;|BinaryWriter| B["Archivo binario"]
+  O --&gt;|JsonUtility| J["Archivo JSON"]
+</code></pre>
+<p>Pensar en los datos como un objeto también es lo que permite, más adelante, separar la clase que usa el juego de la que se escribe en disco.</p>
+<h3>Scriptable Objects: la opción que parece funcionar</h3>
+<p>Es tentador guardar el progreso en un Scriptable Object: está hecho para contener información, se edita desde el :term[Inspector] y, si lo modificas durante el Play Mode del editor, <strong>los cambios se mantienen</strong> al salir. Parece perfecto para ello, y sin embargo, no lo es.</p>
+<p>Un Scriptable Object también es un objeto, y Unity ya lo :term[serializa]{id=“serializar”}: sus campos se escriben en el archivo <code>.asset</code> del proyecto, con las mismas reglas que el Inspector. Por eso es tan fácil confundirlo con un sistema de guardado.</p>
+<p>::::walkthrough{title=“El progreso dentro de un Scriptable Object”}</p>
+<p>:::step</p>
+<pre><code class="language-csharp">[CreateAssetMenu(menuName = "Guardado/Progreso")]
+public class ProgressAsset : ScriptableObject
+{
+    public PlayerProgress progress = new();
+
+    public void AddCurrency(int amount)
+    {
+        progress.currency += amount;
+    }
+}
+</code></pre>
+<p><a href="#L4">El progreso</a> es la misma clase de antes, como campo del asset. Cualquier script que tenga una referencia al asset puede <a href="#L6-9">modificarlo</a>.</p>
+<p>En el editor, el cambio se hace sobre el asset cargado, que sigue en memoria al salir del Play Mode y puede acabar escrito en su <code>.asset</code>. En una build no hay nada que lo escriba.
+:::</p>
+<p>::::</p>
+<p>Lo que ocurre en el editor es que estás modificando el propio asset del proyecto. En una build, los assets se empaquetan dentro del juego y su contenido en disco es inmutable: los cambios viven en memoria hasta que se cierra el juego, y luego se pierden completamente al detener la ejecución. Además, en el editor cada prueba ensucia el asset, y ese “progreso” acaba en el control de versiones.</p>
+<p>Un Scriptable Object sirve para datos definidos por el diseñador, no para datos que el jugador pueda generar o modificar. En Super Poky Racers hay uno con un perfil dentro, <code>ProfileContainer</code>, pero se usa para definir la información inicial de una partida nueva y de las partidas de prueba.</p>
+<p>:::quiz[Guardas el progreso del jugador modificando un Scriptable Object, y en el editor funciona. ¿Qué pasa en una build?]</p>
+<ul>
+<li>[ ] Unity escribe los cambios en el asset del juego instalado</li>
+<li>[x] Los cambios se mantienen mientras el juego está abierto y se pierden al cerrarlo</li>
+<li>[ ] La build no compila</li>
+<li>[ ] Los cambios se guardan automáticamente en <code>Application.persistentDataPath</code></li>
+</ul>
+<p>En una build no hay ningún mecanismo que escriba en disco los cambios de un asset. En el editor parece funcionar porque lo que se modifica es el archivo del proyecto.
+:::</p>
+<h3>Archivo binario</h3>
+<p>La alternativa clásica es escribir los datos como bytes, con <code>BinaryWriter</code> campo a campo o con un serializador binario. <code>BinaryFormatter</code>, el que aparece en muchos tutoriales antiguos, está obsoleto y Microsoft desaconseja usarlo por motivos de seguridad.</p>
+<p>::::walkthrough{title=“El mismo objeto, en bytes”}</p>
+<p>:::step</p>
+<pre><code class="language-csharp">public static class BinarySave
+{
+    public static void Save(PlayerProgress p, string path)
+    {
+        using BinaryWriter writer = new(File.Open(path, FileMode.Create));
+        writer.Write(p.currency);
+        writer.Write((int)p.currentStage);
+        writer.Write(p.unlockedItems.Count);
+        foreach (ItemId id in p.unlockedItems)
+            writer.Write((int)id);
+    }
+
+    public static PlayerProgress Load(string path)
+    {
+        using BinaryReader reader = new(File.Open(path, FileMode.Open));
+        PlayerProgress p = new();
+        p.currency = reader.ReadInt32();
+        p.currentStage = (GameStage)reader.ReadInt32();
+        int count = reader.ReadInt32();
+        for (int i = 0; i &lt; count; i++)
+            p.unlockedItems.Add((ItemId)reader.ReadInt32());
+        return p;
+    }
+}
+</code></pre>
+<p>El objeto se recorre a mano: cada campo se <a href="#L6-10">escribe en un orden</a> y se <a href="#L17-21">lee exactamente en el mismo</a>. Una lista se guarda como <a href="#L8">su número de elementos</a> seguido de los elementos.</p>
+<p>El archivo no dice qué es cada byte: solo es una secuencia de números. Si se añade un campo entre <code>currency</code> y <code>currentStage</code>, los archivos antiguos se leen desplazados y cada valor acaba en el campo equivocado.
+:::</p>
+<p>::::</p>
+<p>Tiene ventajas: ocupa poco, se lee rápido y no se puede editar con un bloc de notas. Pero también tiene costes:</p>
+<ul>
+<li><strong>No se puede leer para depurar.</strong> Si algo se guarda mal, no basta con abrir el archivo para verlo.</li>
+<li><strong>Cambiar el formato es delicado.</strong> Si se añade un campo, los archivos antiguos dejan de encajar, salvo que se gestione una versión del formato a mano.</li>
+<li><strong>No impide hacer trampas.</strong> Que no sea legible no significa que esté protegido. Quien quiera modificarlo, puede hacerlo.</li>
+</ul>
+<p>El primer formato de Super Poky Racers estaba a medio camino: era JSON ofuscado con una operación XOR, en archivos <code>.spr</code>. No se podía leer a simple vista, pero tampoco protegía nada, y complicaba revisar qué se estaba guardando.</p>
+<h3>JSON</h3>
+<p>La tercera opción es guardar texto en formato :term[JSON]:</p>
+<p>::::walkthrough{title=“El mismo objeto, en texto”}</p>
+<p>:::step</p>
+<pre><code class="language-csharp">public static class JsonSave
+{
+    public static void Save(PlayerProgress p, string path)
+    {
+        string json = JsonUtility.ToJson(p, true);
+        File.WriteAllText(path, json);
+    }
+
+    public static PlayerProgress Load(string path)
+    {
+        string json = File.ReadAllText(path);
+        return JsonUtility.FromJson&lt;PlayerProgress&gt;(json);
+    }
+}
+</code></pre>
+<p>Aquí no hay que recorrer el objeto a mano: <a href="#L5"><code>ToJson</code></a> lee sus campos y <a href="#L12"><code>FromJson</code></a> crea una instancia nueva y los rellena. El resultado:</p>
+<pre><code class="language-json">{
+    "currency": 50,
+    "currentStage": 1,
+    "unlockedItems": [100, 202]
+}
+</code></pre>
+<p>Cada valor va junto al nombre de su campo. Por eso el orden no importa y, si se añade un campo nuevo, los archivos antiguos siguen cargando: el campo que falta se queda con su valor por defecto.
+:::</p>
+<p>::::</p>
+<p>Es la opción que usa el juego ahora, por cuatro motivos:</p>
+<ul>
+<li><strong>Es fácilmente legible.</strong> Durante el desarrollo, abrir el archivo de guardado y ver exactamente qué contiene ahorra mucho tiempo de depuración.</li>
+<li><strong>Admite cambios de formato.</strong> El formato de guardado cambió muchas veces durante el proyecto. Al cargar, <code>JsonUtility</code> ignora los campos que ya no existen y deja con su valor por defecto los que faltan, así que un guardado antiguo sigue cargando.</li>
+<li><strong>No hace falta protegerlo.</strong> Es un juego local: si alguien edita su archivo para desbloquear un objeto, no perjudica a nadie.</li>
+<li><strong>El tamaño no importa.</strong> El perfil más completo ocupa unos 16 KB.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Scriptable Object</th>
+<th>Binario</th>
+<th>JSON</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Persiste en una build</td>
+<td>No</td>
+<td>Sí</td>
+<td>Sí</td>
+</tr>
+<tr>
+<td>Legible para depurar</td>
+<td>Sí, en el Inspector</td>
+<td>No</td>
+<td>Sí</td>
+</tr>
+<tr>
+<td>Tolera cambios de formato</td>
+<td>—</td>
+<td>Hay que gestionarlo a mano</td>
+<td>Sí, en gran parte</td>
+</tr>
+<tr>
+<td>Tamaño</td>
+<td>—</td>
+<td>El menor</td>
+<td>Mayor, pero irrelevante aquí</td>
+</tr>
+<tr>
+<td>Dificulta editarlo</td>
+<td>—</td>
+<td>Algo</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<h2>Qué es un archivo JSON</h2>
+<p><strong>JSON</strong> (<em>JavaScript Object Notation</em>) es un formato de texto para representar datos. Solo tiene unas pocas piezas:</p>
+<ul>
+<li><strong>Objetos</strong>, entre llaves, con pares <code>"clave": valor</code>.</li>
+<li><strong>Listas</strong>, entre corchetes.</li>
+<li><strong>Valores</strong>: textos entre comillas, números, <code>true</code>/<code>false</code> y <code>null</code>.</li>
+</ul>
+<pre><code class="language-json">{
+    "nombre": "Cocheguchin",
+    "nivel": 3,
+    "desbloqueado": true,
+    "objetos": ["Nitro", "Escudo"]
+}
+</code></pre>
+<p>Se usa en casi todas partes por la misma razón: lo entienden a la vez las personas y las máquinas. Cualquier lenguaje tiene librerías para leerlo y escribirlo, es el formato habitual de las APIs web y se corresponde de forma natural con las clases de un programa: un objeto JSON es una instancia, y cada clave, un campo.</p>
+<p>También tiene límites. No admite comentarios, solo conoce esos pocos tipos de valores y <strong>no tiene referencias</strong>: si dos sitios apuntan al mismo objeto, se escribe dos veces. Esto último es justo el problema de los Scriptable Objects.</p>
+<p>En Unity, la forma más directa de usarlo es a través de <code>JsonUtility</code>. Serializa con las mismas reglas que el Inspector: campos públicos o con <code>[SerializeField]</code>, de clases marcadas con el :term[atributo] <code>[Serializable]</code>. No admite diccionarios ni propiedades, y guarda los <code>enum</code> como números.</p>
+<h2>Qué guarda Super Poky Racers</h2>
+<p>Para decidir qué guardar, la pregunta es qué debe seguir ahí la próxima vez que el jugador abra el juego. En Super Poky Racers, la información a guardar se reparte en tres niveles:</p>
+<ul>
+<li><strong>Perfiles.</strong> En definitiva, son los archivos de guardado generales. En cada instalación, hay hasta cuatro perfiles, cada uno en su propio archivo (<code>profile_Profile1.json</code>…). Borrar un perfil es borrar un archivo, y si uno se corrompe, los demás no se ven afectados.</li>
+<li><strong>Progreso del perfil.</strong> Lo que el jugador consigue y conserva: los objetos desbloqueados, el progreso de los desafíos, los tutoriales completados, el historial de partidas y las estadísticas.</li>
+<li><strong>Partidas guardadas.</strong> Una partida en curso por modo de juego (historia y arcade), y dentro de éstas: el nivel por el que va, si debe continuar en la tienda o en la carrera, y su coche, con el personaje, el equipamiento, el dinero y los objetos usables.</li>
+</ul>
+<p>La separación entre perfil y partida es intencionada: si el jugador abandona una partida y empieza otra, pierde el coche y el dinero de esa partida, pero no lo que ha desbloqueado.</p>
+<pre><code class="language-mermaid">graph TD
+  P["ProfileN.json"] --&gt; U[Objetos desbloqueados]
+  P --&gt; C[Progreso de desafíos]
+  P --&gt; T[Tutoriales]
+  P --&gt; H[Historial de partidas]
+  P --&gt; S[Estadísticas]
+  P --&gt; G[Partidas guardadas]
+  G --&gt; GS[Historia]
+  G --&gt; GA[Arcade]
+  GS --&gt; CAR["Nivel, punto de guardado y coche&lt;br/&gt;(personaje, equipamiento, dinero, objetos)"]
+</code></pre>
+<p>El juego guarda solo en momentos concretos: al pasar por un punto de guardado (la tienda o el inicio de una carrera), al avanzar en un desafío y al cambiar algo del perfil en el menú.</p>
+<h3>Del perfil al archivo</h3>
+<p>::::walkthrough{title=“Cómo se estructura un perfil” diff=“false”}</p>
+<p>:::step{title=“El perfil”}</p>
+<pre><code class="language-csharp">[Serializable]
+public class Profile
+{
+    public ProfileIDs profileId;
+
+    public UnlockedItemsData unlockedItems;
+    public ChallengeSaveData challengeProgress;
+    public StatisticsData statistics;
+    public MatchHistory matchHistory;
+
+    public bool tutorialsEnabled = true;
+    public List&lt;TutorialId&gt; completedTutorials = new();
+
+    public SavedGameData savedGameData;
+}
+</code></pre>
+<p><code>Profile</code> es la clase que usa el juego mientras se está jugando, y refleja los tres niveles:</p>
+<ul>
+<li><a href="#L4">Qué perfil es</a>, de los cuatro posibles.</li>
+<li><a href="#L6-12">El progreso del perfil</a>: objetos, desafíos, estadísticas, historial y tutoriales.</li>
+<li><a href="#L14">Las partidas guardadas</a>, en su propio objeto.</li>
+</ul>
+<p>Algunas de estas clases no están pensadas para un archivo. <code>UnlockedItemsData</code>, por ejemplo, guarda los objetos desbloqueados junto con diccionarios que los agrupan por rareza o por pieza del coche, para que la tienda los consulte rápido. <code>JsonUtility</code> no sabe guardar diccionarios, y tampoco haría falta: se pueden reconstruir.
+:::</p>
+<p>:::step{title=“La partida guardada”}</p>
+<pre><code class="language-csharp">[Serializable]
+public struct SavedGame
+{
+    public SavedGameType savedGameType;
+    public GameStage currentStage;
+    public SavePoint savePoint;
+    public CarDefinition carDefinition;
+}
+</code></pre>
+<p>Cada partida guarda <a href="#L4">su modo</a> (historia o arcade), <a href="#L5">el nivel</a> por el que va, <a href="#L6">dónde continuar</a> (tienda o carrera) y <a href="#L7">el coche</a>.</p>
+<p><code>SavedGameData</code> contiene un array con una partida por cada valor de <code>SavedGameType</code>, así que como mucho hay una de historia y una de arcade por perfil.
+:::</p>
+<p>:::step{title=“El DTO: lo que se escribe”}</p>
+<pre><code class="language-csharp">[Serializable]
+public class SaveDataDto
+{
+    public ProfileIDs profileId;
+    public List&lt;ItemId&gt; unlockedItemIds;
+    public List&lt;SaveableRef&gt; inventoryItemsRecords;
+    public List&lt;ChallengeProgress&gt; challengeProgress;
+    public StatisticsData statistics;
+    public MatchHistory matchHistory;
+    public bool tutorialsEnabled;
+    public List&lt;TutorialId&gt; completedTutorials;
+    public string lastSaveDate;
+    public SavedGameDto[] savedGames;
+
+    public SaveDataDto(Profile profile) { /* Copia y traduce cada campo */ }
+}
+</code></pre>
+<p>El perfil no se guarda directamente. Se copia a un :term[DTO], una clase que solo contiene datos y define exactamente qué se escribe en el archivo.</p>
+<ul>
+<li>Los objetos desbloqueados pasan a ser <a href="#L5-6">listas de identificadores</a>, sin diccionarios ni referencias a assets. Lo vemos en el siguiente apartado.</li>
+<li>Los desafíos se guardan <a href="#L7">como una lista</a>, sin la clase que los envuelve.</li>
+<li>Se añade <a href="#L12">la fecha del guardado</a>, que el juego no necesita mientras se juega.</li>
+<li>Las partidas pasan a <a href="#L13">su propio DTO</a>, que añade los objetos del coche por identificador.</li>
+</ul>
+<p>Así, la clase <code>Profile</code> puede cambiar sin que cambie sin querer el formato del archivo. El DTO es el contrato con los guardados que ya existen.
+:::</p>
+<p>:::step{title=“Guardar y cargar”}</p>
+<pre><code class="language-csharp">public void SaveProfile(Profile profile)
+{
+    SaveDataDto dto = new SaveDataDto(profile, _itemDatabase);
+    string json = JsonUtility.ToJson(dto, true);
+    WriteProfileFile(profile.profileId, json);
+}
+
+public Profile LoadProfile(ProfileIDs id)
+{
+    string filePath = GetFilePath(id);
+    if (!File.Exists(filePath))
+        return new Profile(id);
+
+    string json = File.ReadAllText(filePath, Encoding.UTF8);
+    SaveDataDto dto = JsonUtility.FromJson&lt;SaveDataDto&gt;(json);
+    return RefreshProfile(dto);
+}
+
+private string GetFilePath(ProfileIDs id) =&gt;
+    Path.Combine(Application.persistentDataPath, $"profile_{id}.json");
+</code></pre>
+<p>Una versión simplificada de <code>SaveService</code>. Guardar es <a href="#L3">crear el DTO</a>, <a href="#L4">convertirlo a JSON</a> y <a href="#L5">escribirlo</a>. El <code>true</code> de <code>ToJson</code> añade sangría y saltos de línea, que es lo que hace que el archivo se pueda leer.</p>
+<p>Cargar es el camino inverso: <a href="#L14">leer el texto</a>, <a href="#L15">convertirlo en un DTO</a> y <a href="#L16">reconstruir el perfil</a> a partir de él. Si <a href="#L11-12">no hay archivo</a>, el perfil empieza vacío.</p>
+<p>Cada perfil va a <a href="#L19-20">su propio archivo</a> en <code>persistentDataPath</code>, la carpeta que Unity reserva para los datos del jugador en cada plataforma.</p>
+<p><code>WriteProfileFile</code> evita además que dos guardados se escriban a la vez y, si el archivo está bloqueado un instante (por un antivirus o una carpeta sincronizada), lo reintenta en lugar de perder el guardado.
+:::</p>
+<p>::::</p>
+<p>Este es el archivo de un perfil con una partida de historia empezada, recortado:</p>
+<pre><code class="language-jsonc">{
+    "profileId": 3,
+    "unlockedItemIds": [],
+    "inventoryItemsRecords": [],
+    "challengeProgress": [],
+    "statistics": {},
+    "matchHistory": { "allEntries": [] },
+    "tutorialsEnabled": true,
+    "completedTutorials": [],
+    "lastSaveDate": "2026-09-10T23:19:36.3772246Z",
+    "savedGames": [
+        { "savedGameType": 0, "currentStage": 1, "savePoint": 1, "carDefinition": { /* … */ } },
+        { "savedGameType": 1, "currentStage": 0, "savePoint": 0, "carDefinition": { /* … */ } }
+    ]
+}
+</code></pre>
+<p>Los <code>enum</code> aparecen como números: <code>"profileId": 3</code> es <code>Profile4</code>, y <code>"savedGameType": 0</code> es el modo historia. Las estadísticas están vacías porque su estructura ya existe en el formato, aunque el juego todavía no las rellena.</p>
+<h2>Guardar referencias a Scriptable Objects</h2>
+<p>Los objetos que el jugador desbloquea o lleva en su coche son instancias de <code>Item</code>, y cada una es un Scriptable Object del proyecto. ¿Qué hace <code>JsonUtility</code> con un campo que apunta a uno? Esto es lo que escribe, sacado de un guardado real:</p>
+<pre><code class="language-jsonc">"loadoutItems": [
+    { "instanceID": 74702 },
+    { "instanceID": 75916 },
+    { "instanceID": 76348 }
+]
+</code></pre>
+<p>No guarda el objeto, sino su <code>instanceID</code>: un número que Unity asigna a cada objeto cargado <strong>durante esa sesión</strong>. La próxima vez que se abra el juego, el mismo asset tendrá otro número, y la referencia ya no apunta a nada. En una build, sin haber pasado por el editor, aparece directamente <code>"instanceID": 0</code>.</p>
+<p>Hace falta un identificador que no cambie entre sesiones. Las opciones habituales:</p>
+<ul>
+<li><strong>El nombre del asset.</strong> Se rompe al renombrarlo.</li>
+<li><strong>La posición en una lista.</strong> Se rompe al añadir, quitar o reordenar elementos.</li>
+<li><strong>El :term[GUID] del asset</strong>, que Unity guarda en su archivo <code>.meta</code>. No cambia al mover ni renombrar el asset, pero solo se puede leer con <code>AssetDatabase</code>, que existe únicamente en el editor.</li>
+<li><strong>Un identificador propio.</strong> En Super Poky Racers, cada objeto tiene un <code>ItemId</code>, un <code>enum</code> con valores fijos (<code>Rocket = 100</code>, <code>BumperMc = 200</code>…). Como cada valor está escrito a mano, añadir o reordenar objetos no cambia los existentes.</li>
+</ul>
+<p>El juego usa los dos últimos. Cada objeto se guarda como un <code>SaveableRef</code>, un objeto pequeño que sustituye a la referencia:</p>
+<pre><code class="language-csharp">[Serializable]
+public struct SaveableRef
+{
+    public SaveableKind kind;
+    public string type;
+    public string guid;
+    public string id;
+}
+</code></pre>
+<p>Y así queda en el archivo:</p>
+<pre><code class="language-json">{
+    "kind": 0,
+    "type": "Middleware.Items.BumperEquipment, Items, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+    "guid": "4b84326fc14aa724290df6df1bb7c01e",
+    "id": "BumperMc"
+}
+</code></pre>
+<p><code>kind</code> indica que es un objeto (el formato está preparado para guardar también desafíos o coches), <code>type</code> es la clase concreta, <code>guid</code> es el GUID del asset e <code>id</code> es su <code>ItemId</code>.</p>
+<p>Para traducir esos identificadores de vuelta a assets está <code>ItemDatabase</code>.</p>
+<p>::::walkthrough{title=“De identificadores a assets” diff=“false”}</p>
+<p>:::step{title=“La base de datos de objetos”}</p>
+<pre><code class="language-csharp">[CreateAssetMenu(menuName = "Super Poky Racers/Databases/Item Database")]
+public class ItemDatabase : ScriptableObject
+{
+    [SerializeField] private List&lt;Item&gt; allItems;
+    private Dictionary&lt;ItemId, Item&gt; _itemLookup;
+
+    public void Initialize()
+    {
+        _itemLookup = new Dictionary&lt;ItemId, Item&gt;();
+        foreach (Item item in allItems)
+        {
+            if (item != null &amp;&amp; !_itemLookup.ContainsKey(item.Id))
+                _itemLookup.Add(item.Id, item);
+        }
+    }
+
+    public Item GetItemById(ItemId id)
+    {
+        if (_itemLookup == null)
+            Initialize();
+        return _itemLookup.TryGetValue(id, out Item item) ? item : null;
+    }
+}
+</code></pre>
+<p>Aquí sí encaja un Scriptable Object: son datos que define el equipo, no el jugador. Contiene <a href="#L4">la lista de todos los objetos del juego</a>, asignada desde el Inspector.</p>
+<p>Con ella construye <a href="#L7-15">un diccionario por <code>ItemId</code></a> la primera vez que se <a href="#L17-22">consulta</a>. En el código real hay un segundo diccionario para buscar por GUID, que aquí se omite.
+:::</p>
+<p>:::step{title=“Objetos desbloqueados”}</p>
+<pre><code class="language-csharp">foreach (SaveableRef rec in dto.inventoryItemsRecords)
+{
+    Item item = null;
+    if (!string.IsNullOrEmpty(rec.guid))
+        item = _itemDatabase.GetByGuid(rec.guid);
+
+    if (item == null &amp;&amp; Enum.TryParse(rec.id, out ItemId parsed))
+        item = _itemDatabase.GetItemById(parsed);
+
+    if (item != null)
+        profile.unlockedItems.AddItem(item);
+}
+</code></pre>
+<p>Al cargar, cada referencia se resuelve <a href="#L4-5">primero por GUID</a> y, si no se encuentra, <a href="#L7-8">por <code>ItemId</code></a>. <a href="#L10-11"><code>AddItem</code></a> reconstruye a la vez los diccionarios por rareza y por pieza que el DTO no guardaba.</p>
+<p>En la práctica, el <code>ItemId</code> no es un simple respaldo. El GUID se obtiene con <code>AssetDatabase</code>, así que solo se escribe cuando se guarda desde el editor. En el juego final se queda vacío, y es el <code>ItemId</code> el que resuelve la referencia.
+:::</p>
+<p>:::step{title=“Los objetos del coche”}</p>
+<pre><code class="language-csharp">private void RefreshCarLoadout(SavedGameDto gameDto, CarDefinition car)
+{
+    ActivableLoadout loadout = car.Inventory.Loadout;
+
+    foreach (UsableChargeRecordDto record in gameDto.purchasedCharges)
+    {
+        Usable usable = _itemDatabase.GetItemById(record.itemId) as Usable;
+        if (usable != null &amp;&amp; record.charges &gt; 0)
+            loadout.RestorePurchasedCharge(usable, record.charges);
+    }
+
+    foreach (UsableChargeRecordDto record in gameDto.loadoutCharges)
+    {
+        Usable usable = _itemDatabase.GetItemById(record.itemId) as Usable;
+        if (usable != null &amp;&amp; record.charges &gt; 0)
+            loadout.RestoreAssignedCharge(usable, record.charges);
+    }
+}
+</code></pre>
+<p>Con los objetos usables del coche pasaba lo mismo: dentro de <code>carDefinition</code> solo quedaban <code>instanceID</code>. Por eso <code>SavedGameDto</code> los guarda además aparte, como pares de <code>ItemId</code> y número de cargas, y al cargar se reconstruyen.</p>
+<p>Se distinguen <a href="#L5-10">las cargas compradas</a> de <a href="#L12-17">las asignadas</a> a la carrera, porque el jugador puede haber comprado objetos que no lleva equipados.</p>
+<p>Se usan métodos <code>Restore…</code> y no los que usa la tienda, porque aquí no se está comprando nada: se reproduce un estado que ya se validó cuando se guardó.
+:::</p>
+<p>::::</p>
+<p>En el mismo archivo se ve el antes y el después. Los tres <code>instanceID</code> de antes corresponden, en el mismo orden, a estos identificadores:</p>
+<pre><code class="language-jsonc">"loadoutItemIds": [102, 101, 105]   // Nitro, Shield, StickyHand
+</code></pre>
+<p>:::quiz[¿Por qué no basta con lo que <code>JsonUtility</code> escribe para un campo que apunta a un Scriptable Object?]</p>
+<ul>
+<li>[ ] Porque escribe el contenido entero del asset y el archivo ocupa demasiado</li>
+<li>[x] Porque escribe un <code>instanceID</code>, que Unity asigna en cada sesión y cambia la próxima vez que se abre el juego</li>
+<li>[ ] Porque lanza una excepción al encontrar un Scriptable Object</li>
+<li>[ ] Porque los Scriptable Objects no se pueden marcar como <code>[Serializable]</code></li>
+</ul>
+<p>El <code>instanceID</code> solo identifica el objeto mientras el juego está abierto. Para guardar una referencia hace falta un identificador estable, como el GUID del asset o un <code>ItemId</code> propio.
+:::</p>
+<h2>Migrar los guardados antiguos</h2>
+<p>Al pasar del formato <code>.spr</code> al JSON, los guardados existentes no se invalidaron. Si no existe el archivo <code>.json</code> de un perfil, <code>LoadProfile</code> busca el <code>.spr</code> antiguo, deshace la ofuscación, lo carga con el mismo DTO y <strong>lo guarda inmediatamente en el formato nuevo</strong>:</p>
+<pre><code class="language-csharp">if (File.Exists(legacyPath))
+{
+    byte[] legacyData = File.ReadAllBytes(legacyPath);
+    Obfuscate(legacyData); // El XOR se deshace aplicándolo otra vez
+    string legacyJson = Encoding.UTF8.GetString(legacyData);
+    SaveDataDto legacyDto = JsonUtility.FromJson&lt;SaveDataDto&gt;(legacyJson);
+    Profile migrated = RefreshProfile(legacyDto);
+    SaveProfile(migrated);
+    return migrated;
+}
+</code></pre>
+<p>El jugador no ve ningún paso intermedio, y a partir de la siguiente carga ya está en el formato nuevo. Cambiar de formato no le cuesta su progreso.</p>
+<h2>En resumen</h2>
+<ul>
+<li><strong>Formato:</strong> JSON, porque se puede leer, tolera cambios y en un juego local no hace falta protegerlo.</li>
+<li><strong>Estructura:</strong> un archivo por perfil, con el progreso del perfil separado de las partidas en curso, y un DTO que define qué se escribe.</li>
+<li><strong>Scriptable Objects:</strong> nunca se guarda la referencia, sino un identificador estable (<code>ItemId</code>, y el GUID cuando está disponible) que <code>ItemDatabase</code> traduce de vuelta al cargar.</li>
+</ul>
+]]></content>
+        <author>
+            <name>Sandro Alvoz</name>
+            <email>sandroalvoza@gmail.com</email>
+            <uri>https://sandroalvoz.github.io/</uri>
+        </author>
+        <category label="Unity"/>
+        <category label="C#"/>
+        <category label="Serialización"/>
+        <category label="Arquitectura"/>
+        <published>2026-11-09T00:00:00.000Z</published>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Assembly Definitions: dividir un proyecto de Unity en capas]]></title>
         <id>https://sandroalvoz.github.io/posts/assembly-definitions/</id>
