@@ -15,15 +15,15 @@
     <icon>https://sandroalvoz.github.io/favicon.ico</icon>
     <rights>All rights reserved 2026, Sandro Alvoz</rights>
     <entry>
-        <title type="html"><![CDATA[Guardar partidas en JSON cuando parte de tu estado son Scriptable Objects]]></title>
+        <title type="html"><![CDATA[Cómo desarrollar un sistema de guardado]]></title>
         <id>https://sandroalvoz.github.io/posts/sistema-guardado/</id>
         <link href="https://sandroalvoz.github.io/posts/sistema-guardado/"/>
         <updated>2026-11-09T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[Cómo diseñé el sistema de guardado de Super Poky Racers: por qué JSON, qué información se guarda y cómo se estructura, y cómo escribir en un archivo referencias a Scriptable Objects.]]></summary>
+        <summary type="html"><![CDATA[Un vistazo al sistema de guardado de Super Poky Racers y las decisiones detrás de su diseño.]]></summary>
         <content type="html"><![CDATA[<p>Guardar y cargar partida suena como uno de los sistemas más simples, y en muchos casos, necesarios, de un juego. Sin embargo, es muy importante tener varias cosas claras:</p>
 <ul>
 <li><strong>en qué formato</strong> se guarda</li>
-<li><strong>qué información</strong> debe sobrevivir al cerrar el juego</li>
+<li><strong>qué información</strong> debe almacenar, <strong>y cuándo</strong></li>
 <li><strong>cómo se traduce</strong> lo que el juego tiene en memoria a algo que se pueda escribir en un archivo.</li>
 </ul>
 <p>En el caso de <a href="/projects/super-poky-racers/">Super Poky Racers</a>, había una dificultad añadida: una gran parte de lo que el jugador consigue (objetos, equipamiento) son :term[Scriptable Objects]{id=“scriptable-object”}. Éstos son assets del proyecto, y un archivo no puede guardar un asset de la misma manera en que guarda un <code>int</code> o un <code>string</code>. En esta publicación, veremos las distintas complicaciones y técnicas para crear un sistema de guardado.</p>
