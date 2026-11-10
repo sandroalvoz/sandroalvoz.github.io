@@ -20,17 +20,17 @@
         <link href="https://sandroalvoz.github.io/posts/sistema-guardado/"/>
         <updated>2026-11-09T00:00:00.000Z</updated>
         <summary type="html"><![CDATA[Un vistazo al sistema de guardado de Super Poky Racers y las decisiones detrás de su diseño.]]></summary>
-        <content type="html"><![CDATA[<p>Guardar y cargar partida suena como uno de los sistemas más simples, y en muchos casos, necesarios, de un juego. Sin embargo, es muy importante tener varias cosas claras:</p>
+        <content type="html"><![CDATA[<p>Guardar y cargar partida suena como uno de los sistemas más simples y, en muchos casos, necesarios de un juego. Sin embargo, es muy importante tener varias cosas claras:</p>
 <ul>
 <li><strong>en qué formato</strong> se guarda</li>
 <li><strong>qué información</strong> debe almacenar, <strong>y cuándo</strong></li>
 <li><strong>cómo se traduce</strong> lo que el juego tiene en memoria a algo que se pueda escribir en un archivo.</li>
 </ul>
-<p>En el caso de <a href="/projects/super-poky-racers/">Super Poky Racers</a>, había una dificultad añadida: una gran parte de lo que el jugador consigue (objetos, equipamiento) son :term[Scriptable Objects]{id=“scriptable-object”}. Éstos son assets del proyecto, y un archivo no puede guardar un asset de la misma manera en que guarda un <code>int</code> o un <code>string</code>. En esta publicación, veremos las distintas complicaciones y técnicas para crear un sistema de guardado.</p>
+<p>En el caso de <a href="/projects/super-poky-racers/">Super Poky Racers</a>, había una dificultad añadida: una gran parte de lo que el jugador consigue (objetos, equipamiento) son :term[Scriptable Objects]{id=“scriptable-object”}. Estos son assets del proyecto, y un archivo no puede guardar un asset de la misma manera en que guarda un <code>int</code> o un <code>string</code>. En esta publicación, veremos las distintas complicaciones y técnicas para crear un sistema de guardado.</p>
 <h2>Tres formas de guardar una partida</h2>
 <h3>La base común: los datos son un objeto</h3>
 <p>Antes de comparar opciones, cabe mencionar que todas ellas tienen algo en común y que debemos tener en cuenta: <strong>la información que se guarda es un objeto</strong>.</p>
-<p>Siguiendo los principios de la :term[programación orientada a objetos], los datos que deben sobrevivir al cerrar el juego se agrupan en una clase. Mientras se juega, el juego trabaja con una instancia de esa clase. Guardar consiste en escribir sobre esa instancia, mientras que cargar una partida es el proceso inverso: leer lo escrito y reconstruir una instancia a partir de su información.</p>
+<p>Siguiendo los principios de la :term[programación orientada a objetos], los datos que deben sobrevivir al cerrar el juego se agrupan en una clase. Mientras se juega, el juego trabaja con una instancia de esa clase. Guardar consiste en escribir esa instancia en un archivo, y cargar una partida es el proceso inverso: leer lo escrito y reconstruir una instancia a partir de su información.</p>
 <p>Para comparar las tres opciones, usaremos la misma clase:</p>
 <pre><code class="language-csharp">[Serializable]
 public class PlayerProgress
@@ -218,11 +218,11 @@ public class ProgressAsset : ScriptableObject
 <ul>
 <li><strong>Perfiles.</strong> En definitiva, son los archivos de guardado generales. En cada instalación, hay hasta cuatro perfiles, cada uno en su propio archivo (<code>profile_Profile1.json</code>…). Borrar un perfil es borrar un archivo, y si uno se corrompe, los demás no se ven afectados.</li>
 <li><strong>Progreso del perfil.</strong> Lo que el jugador consigue y conserva: los objetos desbloqueados, el progreso de los desafíos, los tutoriales completados, el historial de partidas y las estadísticas.</li>
-<li><strong>Partidas guardadas.</strong> Una partida en curso por modo de juego (historia y arcade), y dentro de éstas: el nivel por el que va, si debe continuar en la tienda o en la carrera, y su coche, con el personaje, el equipamiento, el dinero y los objetos usables.</li>
+<li><strong>Partidas guardadas.</strong> Una partida en curso por modo de juego (historia y arcade), y dentro de estas: el nivel por el que va, si debe continuar en la tienda o en la carrera, y su coche, con el personaje, el equipamiento, el dinero y los objetos usables.</li>
 </ul>
 <p>La separación entre perfil y partida es intencionada: si el jugador abandona una partida y empieza otra, pierde el coche y el dinero de esa partida, pero no lo que ha desbloqueado.</p>
 <pre><code class="language-mermaid">graph TD
-  P["ProfileN.json"] --&gt; U[Objetos desbloqueados]
+  P["profile_ProfileN.json"] --&gt; U[Objetos desbloqueados]
   P --&gt; C[Progreso de desafíos]
   P --&gt; T[Tutoriales]
   P --&gt; H[Historial de partidas]
@@ -288,7 +288,10 @@ public class SaveDataDto
     public string lastSaveDate;
     public SavedGameDto[] savedGames;
 
-    public SaveDataDto(Profile profile) { /* Copia y traduce cada campo */ }
+    public SaveDataDto(Profile profile, ItemDatabase itemDatabase)
+    {
+        /* Copia cada campo y traduce los objetos a identificadores */
+    }
 }
 </code></pre>
 <p>El perfil no se guarda directamente. Se copia a un :term[DTO], una clase que solo contiene datos y define exactamente qué se escribe en el archivo.</p>
@@ -381,6 +384,7 @@ public struct SaveableRef
 }
 </code></pre>
 <p><code>kind</code> indica que es un objeto (el formato está preparado para guardar también desafíos o coches), <code>type</code> es la clase concreta, <code>guid</code> es el GUID del asset e <code>id</code> es su <code>ItemId</code>.</p>
+<p>En <code>unlockedItemIds</code> el <code>ItemId</code> aparece como número, igual que cualquier <code>enum</code> con <code>JsonUtility</code>, pero aquí va como texto (<code>"BumperMc"</code>). Como <code>SaveableRef</code> está pensado para varios tipos de asset, <code>id</code> no puede ser un <code>enum</code> concreto: guarda el nombre del valor, y al cargar <code>Enum.TryParse</code> lo convierte de vuelta en el <code>enum</code> que corresponda.</p>
 <p>Para traducir esos identificadores de vuelta a assets está <code>ItemDatabase</code>.</p>
 <p>::::walkthrough{title=“De identificadores a assets” diff=“false”}</p>
 <p>:::step{title=“La base de datos de objetos”}</p>
@@ -426,7 +430,7 @@ public class ItemDatabase : ScriptableObject
 }
 </code></pre>
 <p>Al cargar, cada referencia se resuelve <a href="#L4-5">primero por GUID</a> y, si no se encuentra, <a href="#L7-8">por <code>ItemId</code></a>. <a href="#L10-11"><code>AddItem</code></a> reconstruye a la vez los diccionarios por rareza y por pieza que el DTO no guardaba.</p>
-<p>En la práctica, el <code>ItemId</code> no es un simple respaldo. El GUID se obtiene con <code>AssetDatabase</code>, así que solo se escribe cuando se guarda desde el editor. En el juego final se queda vacío, y es el <code>ItemId</code> el que resuelve la referencia.
+<p>En la práctica, el <code>ItemId</code> no es un simple respaldo. El GUID se obtiene con <code>AssetDatabase</code>, así que solo se escribe cuando se guarda desde el editor. En el juego final se queda vacío, y es el <code>ItemId</code> el que resuelve la referencia. Eso deja el GUID a medias: en la build no aporta nada. En <a href="#qu%C3%A9-har%C3%ADa-distinto">Qué haría distinto</a> explico cómo arreglarlo.
 :::</p>
 <p>:::step{title=“Los objetos del coche”}</p>
 <pre><code class="language-csharp">private void RefreshCarLoadout(SavedGameDto gameDto, CarDefinition car)
@@ -449,6 +453,7 @@ public class ItemDatabase : ScriptableObject
 }
 </code></pre>
 <p>Con los objetos usables del coche pasaba lo mismo: dentro de <code>carDefinition</code> solo quedaban <code>instanceID</code>. Por eso <code>SavedGameDto</code> los guarda además aparte, como pares de <code>ItemId</code> y número de cargas, y al cargar se reconstruyen.</p>
+<p>Los <code>instanceID</code> no han desaparecido: <code>carDefinition</code> se sigue serializando tal cual, así que el archivo los arrastra aunque al cargar se ignoren. Funciona, pero son datos basura dentro del guardado.</p>
 <p>Se distinguen <a href="#L5-10">las cargas compradas</a> de <a href="#L12-17">las asignadas</a> a la carrera, porque el jugador puede haber comprado objetos que no lleva equipados.</p>
 <p>Se usan métodos <code>Restore…</code> y no los que usa la tienda, porque aquí no se está comprando nada: se reproduce un estado que ya se validó cuando se guardó.
 :::</p>
@@ -479,11 +484,34 @@ public class ItemDatabase : ScriptableObject
 }
 </code></pre>
 <p>El jugador no ve ningún paso intermedio, y a partir de la siguiente carga ya está en el formato nuevo. Cambiar de formato no le cuesta su progreso.</p>
+<h2>¿Qué haría distinto?</h2>
+<p>El sistema funciona y ha aguantado todos los cambios del proyecto, pero hay decisiones que hoy tomaría de otra manera.</p>
+<h3>Un número de versión en el archivo</h3>
+<p>La tolerancia de JSON cubre los campos que se añaden o desaparecen, pero no los que cambian de significado: si un campo pasa a guardar otra cosa con el mismo nombre, o se reordenan los valores de un <code>enum</code> sin números fijos, el archivo antiguo carga sin errores y con datos equivocados. La migración del <code>.spr</code> se pudo detectar por la extensión; dentro del JSON no hay nada parecido.</p>
+<pre><code class="language-csharp">public const int CurrentVersion = 1;
+public int saveVersion; // Un archivo sin este campo se lee como versión 0
+</code></pre>
+<p>Con un <code>saveVersion</code> que el constructor del DTO rellena con <code>CurrentVersion</code>, al cargar basta comparar: si el archivo es de una versión anterior, se le aplican en orden los pasos de migración que falten antes de reconstruir el perfil.</p>
+<h3>Un archivo corrupto</h3>
+<p>En la versión que he mostrado, si el archivo está cortado o mal formado, <code>FromJson</code> lanza una excepción y la carga del perfil falla. Que un guardado se corte es más probable de lo que parece: basta con que el juego se cierre o se vaya la luz mientras se escribe.</p>
+<p>Dos cambios lo cubrirían:</p>
+<ul>
+<li><strong>Escribir en un archivo temporal y reemplazar.</strong> Se escribe primero <code>profile_Profile1.json.tmp</code> y, cuando está completo, <code>File.Replace</code> lo cambia por el bueno y deja el anterior como <code>.bak</code>. Si el juego se cierra a mitad, el archivo original sigue intacto.</li>
+<li><strong>Cargar con <code>try</code>/<code>catch</code>.</strong> Si el JSON no se puede leer, se intenta con el <code>.bak</code> y, si tampoco, se avisa al jugador en lugar de dejar que la excepción rompa la carga.</li>
+</ul>
+<h3>El GUID también en la build</h3>
+<p>El GUID solo se escribe desde el editor porque solo ahí existe <code>AssetDatabase</code>. La solución es que cada <code>Item</code> guarde su propio GUID en un campo serializado, rellenado desde el editor con <code>OnValidate</code> o con un script de editor que recorra los objetos. Así se empaqueta con el asset, está disponible en la build y el camino por GUID deja de funcionar solamente en el editor.</p>
+<h3>Los campos que sobran</h3>
+<ul>
+<li><strong><code>type</code></strong> guarda el nombre completo de la clase con su ensamblado y versión (<code>..., Items, Version=0.0.0.0, ...</code>), y el código de carga no lo usa. Además, se rompería si se renombra el ensamblado, algo que con <a href="/posts/assembly-definitions/">Assembly Definitions</a> es fácil que pase. O se usa para validar el tipo al cargar, o se quita.</li>
+<li><strong><code>carDefinition</code></strong> sigue llevando sus <code>instanceID</code>. Lo correcto es que <code>SavedGameDto</code> copie solo los datos del coche que hacen falta, como ya hace el perfil con su DTO, en lugar de serializar la clase del juego entera.</li>
+</ul>
 <h2>En resumen</h2>
 <ul>
 <li><strong>Formato:</strong> JSON, porque se puede leer, tolera cambios y en un juego local no hace falta protegerlo.</li>
 <li><strong>Estructura:</strong> un archivo por perfil, con el progreso del perfil separado de las partidas en curso, y un DTO que define qué se escribe.</li>
 <li><strong>Scriptable Objects:</strong> nunca se guarda la referencia, sino un identificador estable (<code>ItemId</code>, y el GUID cuando está disponible) que <code>ItemDatabase</code> traduce de vuelta al cargar.</li>
+<li><strong>Pendiente:</strong> versionar el formato, protegerse de archivos corruptos y llevar el GUID a la build.</li>
 </ul>
 ]]></content>
         <author>
@@ -554,7 +582,7 @@ Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la 
 <p>Esta es la división que uso. Cada flecha significa “depende de”, así que la base queda abajo.</p>
 <p>::::diagram</p>
 <pre><code class="language-mermaid">graph TB
-  Bootstrappers --&gt; Gizmos
+  Bootstrappers --&gt; Implementations
   Gizmos --&gt; Implementations
   Implementations --&gt; Core
   Core --&gt; Middleware
@@ -562,11 +590,11 @@ Los ensamblados reducen el tiempo de <strong>compilación</strong>, no el de la 
   Editor -.-&gt; Implementations
 </code></pre>
 <ul>
-<li><strong>Dependencies</strong>: código que funciona casi por sí solo y que podría llevarse a cualquier proyecto (pooling, máquina de estados genérica, utilidades), más las referencias a paquetes que usa todo el proyecto: Input System, Localization, UniTask, ZString… Si borras algo de aquí, el proyecto entero debería dejar de compilar.</li>
+<li><strong>Dependencies</strong>: código que funciona casi por sí solo y que podría llevarse a cualquier proyecto (pooling, máquina de estados genérica, utilidades), más las referencias a paquetes que usa todo el proyecto: Input System, Localization, UniTask, ZString… Es la base: todas las demás capas dependen de ella, directa o indirectamente.</li>
 <li><strong>Middleware</strong>: piezas intermedias. Están más cerca del juego, pero siguen siendo genéricas.</li>
 <li><strong>Core</strong>: la lógica principal: controlador del jugador, spawners, la base de la IA.</li>
 <li><strong>Implementations</strong>: contenido concreto del juego, presentación, animación y efectos puntuales.</li>
-<li><strong>Gizmos</strong>: dibujan en el editor datos del juego. Necesitan esos datos, así que van casi arriba del todo.</li>
+<li><strong>Gizmos</strong>: dibujan en el editor datos del juego. Necesitan esos datos, así que van arriba, junto a los Bootstrappers y sin depender de ellos.</li>
 <li><strong>Bootstrappers</strong>: inicializan servicios y datos al arrancar, por ejemplo, recoger todos los Scriptable Objects de objetos del juego. Necesitan conocer los tipos concretos, así que van en la cima.</li>
 <li><strong>Editor</strong>: herramientas de editor, en su propio ensamblado marcado solo para la plataforma Editor.
 ::::</li>
