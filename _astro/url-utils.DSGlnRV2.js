@@ -1,0 +1,1 @@
+import"./config.B0X9Lyg2.js";import"./es.CPV56rh2.js";function o(...r){return r.join("/").replace(/\/+/g,"/")}function u(n){return r(`/posts/${n}/`)}function r(r){return o("","/",r)}export{u as g};

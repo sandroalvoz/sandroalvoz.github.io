@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://sandroalvoz.github.io/</id>
     <title>Sandro Alvoz</title>
-    <updated>2026-11-09T00:00:00.000Z</updated>
+    <updated>2026-11-15T00:00:00.000Z</updated>
     <generator>Astro - Feed Library</generator>
     <author>
         <name>Sandro Alvoz</name>
@@ -14,6 +14,176 @@
     <subtitle>Portfolio Personal</subtitle>
     <icon>https://sandroalvoz.github.io/favicon.ico</icon>
     <rights>All rights reserved 2026, Sandro Alvoz</rights>
+    <entry>
+        <title type="html"><![CDATA[Carga aditiva de escenas]]></title>
+        <id>https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/</id>
+        <link href="https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/"/>
+        <updated>2026-11-15T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Qué es la carga aditiva, y cómo y cuándo usarla]]></summary>
+        <content type="html"><![CDATA[<p>En Unity, la forma más directa y simple de crear un juego es incluyendo una escena por nivel, junto con todas sus necesidades: el jugador, la cámara, la UI, gestores…
+Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyecto:</p>
+<ul>
+<li>tiempos de carga largos</li>
+<li>cambios que debemos repetir en todas las escenas</li>
+<li>y datos de partida que se pierden, o debemos gestionar de forma engorrosa con cada cambio de escena</li>
+</ul>
+<p>Con la carga aditiva, y una correcta estructuración de las escenas, podremos evitar estos problemas y garantizar la escalabilidad de nuestro proyecto.</p>
+<h2>Un proyecto que crece</h2>
+<p>Imagina que estás desarrollando un roguelike con una escena por sala. Cada escena contiene la lógica del juego y el contenido de su sala.</p>
+<ol>
+<li><strong>Mantener las escenas es caro.</strong> Cambiar un parámetro del jugador implica repetirlo en todas. Convertir los objetos comunes en :term[prefabs]{id=“prefab”} y usar Scriptable Objects para almacenar la información de la configuración lo arregla en parte.</li>
+<li><strong>Los datos no persisten.</strong> Para conservar la vida y los recursos entre salas, se utiliza una clase estática cuya información se lee al cargar y escribe al descargar cada escena.</li>
+<li><strong>Cambiar de sala tarda diez segundos.</strong> Cada transición descarga una escena y carga otra completa, con su jugador, su cámara, su interfaz y sus gestores.</li>
+</ol>
+<p>Un primer intento para reducir los tiempos de carga consiste en agrupar todas las salas de un nivel en la misma escena. Con ello, moverse entre salas pasa a ser casi inmediato, pero a la hora de cambiar de nivel, se siguen tardando unos trece segundos.</p>
+<p>Al medir esa carga, la mayor parte del tiempo se va en volver a crear lo que todas las escenas tienen en común. Y la clase estática ha dado problemas más de una vez: sus datos sobreviven a los cambios de escena y hay que acordarse de limpiarlos a mano.</p>
+<p>La solución es separar las escenas en dos tipos:</p>
+<ul>
+<li><strong>Escenas principales</strong>: contienen la lógica y los sistemas del juego (jugador, cámara, interfaz, gestores). Son pocas y casi no cambian.</li>
+<li><strong>Escenas de contenido</strong>: solo tienen lo propio de cada nivel o sala: escenario, NPCs, colliders puntuales y efectos de ambientación. Son muchas y se cargan y descargan constantemente.</li>
+</ul>
+<p>La escena principal más habitual es la <strong>escena persistente</strong>, que reúne todo lo común al juego, se carga una sola vez al arrancar y no se descarga nunca. En este ejemplo del roguelike es suficiente con ella, pero en juegos más grandes puede haber otras escenas principales, como por ejemplo, una por modo de juego, que se cargan y descargan encima de la persistente.</p>
+<p>En ejecución, una o varias escenas principales conviven con las escenas de contenido, y sus objetos pueden interactuar los unos con los otros sin problemas.</p>
+<p>Los datos de partida viven directamente en la escena persistente, así que la clase estática desaparece. La transición entre niveles baja de trece segundos a unos tres y medio, y en la build la escena persistente se carga mientras se muestra el menú principal, así que el jugador no nota la carga inicial.</p>
+<h2>¿Qué es la carga aditiva?</h2>
+<p>La <strong>carga aditiva</strong> consiste en tener varias escenas cargadas al mismo tiempo. Lo habitual es combinar una o varias escenas principales, con los sistemas, y una o varias escenas de contenido.</p>
+<p>La <strong>carga asíncrona</strong> consiste en cargar e inicializar una escena mientras el juego sigue funcionando, en lugar de congelarlo hasta que termine. Suelen ir juntas, pero son cosas distintas: puedes cargar de forma aditiva sin que sea asíncrona, y viceversa.</p>
+<h2>¿Qué ocupa memoria y qué no?</h2>
+<p>Con varias escenas cargadas a la vez, conviene tener claro qué libera memoria y qué no:</p>
+<ul>
+<li><strong>Desactivar un objeto</strong> (<code>SetActive(false)</code>) solo hace que deje de ejecutar su lógica y de dibujarse. El objeto, sus componentes y los assets que usa (mallas, texturas, sonidos) siguen cargados.</li>
+<li><strong>El <em>culling</em></strong> (no dibujar lo que la cámara no ve) tampoco libera nada: deja de dibujar, no de ocupar.</li>
+<li><strong>Destruir un objeto o descargar su escena</strong> sí libera los objetos. Pero <code>UnloadSceneAsync</code> no descarga los assets que usaban: siguen en memoria hasta que se llama a <code>Resources.UnloadUnusedAssets</code>.</li>
+<li><strong>Una referencia desde la escena persistente</strong> a un asset del nivel (en un campo estático o en una lista, por ejemplo) hace que <code>UnloadUnusedAssets</code> lo considere en uso, así que no se libera nunca.</li>
+</ul>
+<p>Por eso, lo que el jugador ya ha dejado atrás no basta con desactivarlo: si no va a volver a usarse pronto, hay que descargarlo.</p>
+<p>:::quiz[Desactivas todos los objetos de un nivel que el jugador ya ha dejado atrás, sin descargar su escena. ¿Qué consigues?]</p>
+<ul>
+<li>[ ] Liberar la memoria que ocupaban</li>
+<li>[x] Que dejen de ejecutarse y de dibujarse, pero siguen ocupando memoria</li>
+<li>[ ] Que la próxima carga sea más rápida</li>
+</ul>
+<p>Un objeto inactivo sigue cargado. Para liberar memoria hay que descargar la escena (o destruir los objetos). Lo mismo pasa con el <em>culling</em>: deja de dibujar, no de ocupar.
+:::</p>
+<h2>¿Qué debemos tener en cuenta a la hora de dividir escenas?</h2>
+<p>No hay una estructura correcta para todos los juegos, pero debemos tener en cuenta algunos factores:</p>
+<ul>
+<li><strong>Memoria</strong>: cuanto menos haya cargado sin usarse, mejor.</li>
+<li><strong>Tiempos de carga</strong>: no solo importa <em>qué</em> se carga, también <em>cuándo</em>. Una carga que ocurre durante una transición o un menú pasa desapercibida, mientras que otra que ralentiza o congela el juego temporalmente puede resultar molesta.</li>
+<li><strong>Separación de responsabilidades</strong>: igual que con las <a href="/posts/assembly-definitions/">Assembly Definitions</a>, separar la lógica principal del contenido hace más fácil saber dónde está cada cosa.</li>
+<li><strong>Control de versiones</strong>: una escena es un archivo grande y difícil de fusionar. Si dos personas tocan la misma escena en distintas ramas de un repositorio, es prácticamente seguro que se generará un :term[conflicto]. Separar la lógica del contenido del juego nos ayudará a evitar estos problemas.</li>
+</ul>
+<p>Algunos ejemplos de cómo cambia la decisión según el juego:</p>
+<ul>
+<li>Un juego muy pequeño puede vivir en una única escena sin ningún problema.</li>
+<li>En <em>Hollow Knight</em>, cada sala es una escena. Esto tiene sentido por la cantidad de detalle y capas de cada sala. En lugar de una escena persistente, mantiene sus gestores entre escenas con <code>DontDestroyOnLoad</code>.</li>
+<li>Un juego con varios tipos de nivel, como <em>Cuphead</em> (plataformas, jefes, niveles de vuelo), encaja con tres capas: una escena persistente con el contexto de la partida, una escena principal por tipo de nivel con su lógica y una escena de contenido por nivel.</li>
+<li>A veces la carga lenta no tiene nada que ver con las escenas, sino con la cantidad de datos que hay que procesar al entrar. Antes de reorganizar nada, hay que medir.</li>
+</ul>
+<p>Por otra parte, esconder la carga detrás de una transición o una animación también es una solución válida. Antes de dedicar tiempo a optimizar o reestructurar todo un proyecto, debemos preguntarnos si el jugador lo nota.</p>
+<h2>¿Cómo se carga y descarga?</h2>
+<p>::::walkthrough{title=“Cargar y descargar una escena de forma aditiva”}</p>
+<p>:::step{title=“Empezar la carga”}</p>
+<pre><code class="language-csharp">private IEnumerator LoadAdditive(int buildIndex)
+{
+    AsyncOperation load = SceneManager.LoadSceneAsync(buildIndex, LoadSceneMode.Additive);
+    load.allowSceneActivation = false;
+}
+</code></pre>
+<p><a href="#L3"><code>LoadSceneAsync</code></a> con <code>LoadSceneMode.Additive</code> carga la escena sin descargar las demás, y lo hace de forma asíncrona: el juego sigue funcionando mientras tanto.</p>
+<p>Con <a href="#L4"><code>allowSceneActivation = false</code></a>, Unity prepara la escena pero no la activa todavía. Así decidimos nosotros en qué momento aparece.
+:::</p>
+<p>:::step{title=“Esperar a que esté lista”}</p>
+<pre><code class="language-csharp">private IEnumerator LoadAdditive(int buildIndex)
+{
+    AsyncOperation load = SceneManager.LoadSceneAsync(buildIndex, LoadSceneMode.Additive);
+    load.allowSceneActivation = false;
+
+    while (load.progress &lt; 0.9f)
+        yield return null;
+}
+</code></pre>
+<p>Mientras la activación esté bloqueada, <a href="#L6"><code>progress</code></a> se detiene en <code>0.9</code>, no en <code>1</code>. Esperar a <code>1</code> dejaría la corrutina atascada para siempre.</p>
+<p>Este es el momento de terminar lo que tape la carga: un fundido a negro, una animación o una pantalla de carga.
+:::</p>
+<p>:::step{title=“Activar la escena”}</p>
+<pre><code class="language-csharp">private IEnumerator LoadAdditive(int buildIndex)
+{
+    AsyncOperation load = SceneManager.LoadSceneAsync(buildIndex, LoadSceneMode.Additive);
+    load.allowSceneActivation = false;
+
+    while (load.progress &lt; 0.9f)
+        yield return null;
+
+    load.allowSceneActivation = true;
+
+    while (!load.isDone)
+        yield return null;
+
+    SceneManager.SetActiveScene(SceneManager.GetSceneByBuildIndex(buildIndex));
+}
+</code></pre>
+<p>Al <a href="#L9">permitir la activación</a>, Unity termina la carga y ejecuta los <code>Awake</code> y <code>OnEnable</code> de la escena. Cuando <a href="#L11-12"><code>isDone</code></a> es verdadero, ya está lista.</p>
+<p><a href="#L14"><code>SetActiveScene</code></a> decide en qué escena aparecen los objetos que se instancian a partir de ese momento y qué ajustes de iluminación se aplican. Si no se cambia, todo lo que se cree acabará en la escena persistente y no se descargará con el nivel.
+:::</p>
+<p>:::step{title=“Descargar”}</p>
+<pre><code class="language-csharp">private IEnumerator Unload(int buildIndex)
+{
+    AsyncOperation unload = SceneManager.UnloadSceneAsync(buildIndex);
+    while (unload != null &amp;&amp; !unload.isDone)
+        yield return null;
+
+    yield return Resources.UnloadUnusedAssets();
+}
+</code></pre>
+<p><a href="#L3"><code>UnloadSceneAsync</code></a> devuelve <code>null</code> si la escena no está cargada, de ahí la <a href="#L4">comprobación</a>.</p>
+<p>Descargar la escena no libera sus assets, usar <a href="#L7"><code>UnloadUnusedAssets</code></a> sí, aunque recorre todo lo cargado y puede tardar, por lo que conviene llamarlo durante una transición y no en mitad de la partida.
+:::</p>
+<p>::::</p>
+<p>:::quiz[Cargas un nivel de forma aditiva, no llamas a <code>SetActiveScene</code> y durante el nivel instancias 200 proyectiles. ¿Qué pasa al descargar el nivel?]</p>
+<ul>
+<li>[ ] Los proyectiles se descargan con él</li>
+<li>[x] Los proyectiles siguen ahí, porque se crearon en la escena activa, que era la persistente</li>
+<li>[ ] Unity lanza un error al descargar</li>
+</ul>
+<p>Los objetos nuevos van a la escena activa. Si sigue siendo la persistente, sobreviven a la descarga del nivel. O cambias la escena activa, o los mueves con <code>SceneManager.MoveGameObjectToScene</code>.
+:::</p>
+<p>Cargar por <code>buildIndex</code> es más robusto que por nombre, porque un nombre mal escrito solo falla en ejecución. Pero el índice tiene su propio problema: depende del orden de la lista de escenas de la build.</p>
+<h2>Ejemplo práctico</h2>
+<p>En Super Poky Racers, la partida alterna entre dos modos de juego: la carrera y la tienda. El jugador pasa de una carrera a la tienda, y de la tienda a la siguiente carrera, una y otra vez. Las escenas principales se diseñaron alrededor de ese ciclo:</p>
+<ul>
+<li><strong><code>Persistent</code></strong> se carga al arrancar y nunca se descarga. Tiene lo común a todo el juego y los datos de la partida, que así sobreviven a cada ida y vuelta entre la carrera y la tienda.</li>
+<li><strong><code>MainMenu</code></strong>, <strong><code>Shop</code></strong> y <strong><code>Race</code></strong> se cargan encima de la persistente y se sustituyen entre sí. Cada una tiene la lógica de su momento de la partida, así que la tienda no carga nada de la carrera, ni al revés.</li>
+<li><strong>Sobre <code>Race</code></strong> se carga la escena de contenido de cada circuito o cinemática.</li>
+</ul>
+<p>Las cuatro escenas principales están en un <code>enum</code>, <code>SceneType</code>. Casi nunca cambian, así que mantener el <code>enum</code> sincronizado con la lista de la build no cuesta nada.</p>
+<p>Las escenas de contenido son otra historia: cada circuito o cinemática nueva es una escena más. Para ellas, el paquete <a href="https://github.com/starikcetin/Eflatun.SceneReference">Eflatun.SceneReference</a> ha sido sumamente útil, porque permite añadir escenas auxiliares de forma escalable y cómoda para todo el equipo:</p>
+<ul>
+<li>Cada circuito (<code>RaceTrack</code>) y cada cinemática (<code>Cutscene</code>) guarda su escena en un campo que se asigna desde el :term[Inspector], arrastrando la escena como cualquier otro asset.</li>
+<li>Guarda el :term[GUID] de la escena, así que renombrarla o reordenar la lista de la build no rompe nada.</li>
+<li>Marca el campo si la escena no está en la lista de la build, o está desactivada, y ofrece añadirla o activarla con un clic.</li>
+</ul>
+<p>Sin <code>SceneReference</code>, cada circuito nuevo obligaría a añadir un valor al <code>enum</code> y comprobar que coincide con su <code>buildIndex</code>. Y un desajuste no da ningún error de compilación: simplemente se carga la escena equivocada.</p>
+<p>Las cargas no usan corrutinas como las del ejemplo, sino UniTask, que permite esperar directamente a <code>LoadSceneAsync</code> con <code>await</code>.</p>
+<h2>Conclusión</h2>
+<p>La carga aditiva permite tener varias escenas cargadas a la vez, y con ello, estructurar la jerarquía de escenas separando la lógica del juego y el contenido de cada nivel.</p>
+<ul>
+<li>Lo común a todo el juego va en escenas principales, empezando por una escena persistente que no se descarga nunca. Así no se vuelve a crear en cada transición, y los datos de partida no necesitan intermediarios para sobrevivir a los cambios de escena.</li>
+<li>Lo propio de cada nivel va en escenas de contenido, que se cargan y descargan según sea necesario.</li>
+</ul>
+<p>Cómo dividir las escenas depende de cada juego: de su tamaño, de cómo se mueve el jugador entre sus partes y de cuánto tarda cada carga.</p>
+]]></content>
+        <author>
+            <name>Sandro Alvoz</name>
+            <email>sandroalvoza@gmail.com</email>
+            <uri>https://sandroalvoz.github.io/</uri>
+        </author>
+        <category label="Unity"/>
+        <category label="C#"/>
+        <category label="Arquitectura"/>
+        <category label="Escenas"/>
+        <published>2026-11-15T00:00:00.000Z</published>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Cómo desarrollar un sistema de guardado]]></title>
         <id>https://sandroalvoz.github.io/posts/sistema-guardado/</id>
@@ -196,7 +366,7 @@ public class ProgressAsset : ScriptableObject
 </tr>
 </tbody>
 </table>
-<h2>Qué es un archivo JSON</h2>
+<h2>¿Qué es un archivo JSON?</h2>
 <p><strong>JSON</strong> (<em>JavaScript Object Notation</em>) es un formato de texto para representar datos. Solo tiene unas pocas piezas:</p>
 <ul>
 <li><strong>Objetos</strong>, entre llaves, con pares <code>"clave": valor</code>.</li>
@@ -213,7 +383,7 @@ public class ProgressAsset : ScriptableObject
 <p>Se usa en casi todas partes por la misma razón: lo entienden a la vez las personas y las máquinas. Cualquier lenguaje tiene librerías para leerlo y escribirlo, es el formato habitual de las APIs web y se corresponde de forma natural con las clases de un programa: un objeto JSON es una instancia, y cada clave, un campo.</p>
 <p>También tiene límites. No admite comentarios, solo conoce esos pocos tipos de valores y <strong>no tiene referencias</strong>: si dos sitios apuntan al mismo objeto, se escribe dos veces. Esto último es justo el problema de los Scriptable Objects.</p>
 <p>En Unity, la forma más directa de usarlo es a través de <code>JsonUtility</code>. Serializa con las mismas reglas que el Inspector: campos públicos o con <code>[SerializeField]</code>, de clases marcadas con el :term[atributo] <code>[Serializable]</code>. No admite diccionarios ni propiedades, y guarda los <code>enum</code> como números.</p>
-<h2>Qué guarda Super Poky Racers</h2>
+<h2>¿Qué guarda Super Poky Racers?</h2>
 <p>Para decidir qué guardar, la pregunta es qué debe seguir ahí la próxima vez que el jugador abra el juego. En Super Poky Racers, la información a guardar se reparte en tres niveles:</p>
 <ul>
 <li><strong>Perfiles.</strong> En definitiva, son los archivos de guardado generales. En cada instalación, hay hasta cuatro perfiles, cada uno en su propio archivo (<code>profile_Profile1.json</code>…). Borrar un perfil es borrar un archivo, y si uno se corrompe, los demás no se ven afectados.</li>
@@ -530,7 +700,7 @@ public int saveVersion; // Un archivo sin este campo se lee como versión 0
         <id>https://sandroalvoz.github.io/posts/assembly-definitions/</id>
         <link href="https://sandroalvoz.github.io/posts/assembly-definitions/"/>
         <updated>2026-10-25T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[Qué es un ensamblado, por qué conviene partir el proyecto en varios, cómo se ordenan las dependencias y cómo encaja todo esto con los tests unitarios.]]></summary>
+        <summary type="html"><![CDATA[¿Qué es y para qué sirve un ensamblado?]]></summary>
         <content type="html"><![CDATA[<p>Por defecto, Unity compila todos tus scripts en un único ensamblado llamado <code>Assembly-CSharp</code>. Funciona, pero tiene dos consecuencias: cualquier cambio en cualquier script recompila el proyecto entero, y nada impide que una clase de bajo nivel acabe dependiendo de otra de alto nivel. Las <em>Assembly Definitions</em> resuelven las dos cosas.</p>
 <h2>Antes de nada: capas</h2>
 <p>Cuando programo un sistema suelo separar tres niveles:</p>
@@ -540,7 +710,7 @@ public int saveVersion; // Un archivo sin este campo se lee como versión 0
 <li><strong>Integración</strong>: cómo esa máquina se conecta con el resto (Input System, físicas, HUD, audio, VFX).</li>
 </ul>
 <p>Cada nivel depende del anterior y nunca al revés. Es la misma idea que el modelo TCP/IP: la capa de aplicación usa la de transporte, pero la de transporte no sabe qué aplicación hay encima. Un ensamblado es la forma que tiene Unity de convertir esas capas en algo que el compilador hace cumplir.</p>
-<h2>Qué es un ensamblado</h2>
+<h2>¿Qué es un ensamblado?</h2>
 <p>Un :term[ensamblado] es una unidad de compilación: un <code>.dll</code> con un grupo de scripts. En Unity se crea con <strong>Project → clic derecho → Create → Scripting → Assembly Definition</strong>, que genera un archivo <code>.asmdef</code>.</p>
 <p>La regla de pertenencia es sencilla: <strong>cada script pertenece al <code>.asmdef</code> más cercano subiendo por sus carpetas</strong>. Si no hay ninguno, va a <code>Assembly-CSharp</code>.</p>
 <p>:::quiz[Tienes <code>Assets/Scripts/Game.asmdef</code> y <code>Assets/Scripts/Core/Core.asmdef</code>. ¿A qué ensamblado pertenece <code>Assets/Scripts/Core/Player/PlayerController.cs</code>?]</p>
@@ -553,7 +723,7 @@ public int saveVersion; // Un archivo sin este campo se lee como versión 0
 <p>Unity sube carpeta a carpeta desde el script y se queda con el primer <code>.asmdef</code> que encuentra: <code>Player/</code> no tiene ninguno, <code>Core/</code> sí. Un script nunca pertenece a dos ensamblados.
 :::</p>
 <p>Para que un ensamblado use código de otro, hay que añadir el segundo a sus <strong>referencias</strong> (en el :term[Inspector] del <code>.asmdef</code>). Es el equivalente a un <code>using</code>, pero a nivel de proyecto: sin la referencia, el <code>using</code> no compila.</p>
-<h2>Por qué compila más rápido</h2>
+<h2>¿Por qué compila más rápido?</h2>
 <p>Cuando modificas un script, Unity recompila <strong>su ensamblado y todos los que dependen de él</strong>. El resto se reutiliza.</p>
 <p>De ahí sale una consecuencia práctica: tocar una capa baja es más caro que tocar una alta, porque arrastra a todo lo que tiene encima. Las capas bajas deberían ser las que menos cambian.</p>
 <p>:::quiz[Tu proyecto tiene <code>Dependencies → Core → Implementations</code> (cada uno referencia al anterior). ¿Qué cambio provoca una recompilación más grande?]</p>
@@ -1094,7 +1264,7 @@ A diferencia del Service Locator, donde el usuario solicita servicios a un regis
 <p>Las dos primeras son justo lo que resuelve un framework de inyección. VContainer llama al método <code>[Inject]</code> siempre, y lo hace antes de que el objeto empiece a funcionar.
 :::</p>
 <p>Para resolverlo existen frameworks de inyección. En Unity los más conocidos son <a href="https://github.com/modesttree/Zenject"><strong>Zenject</strong></a> y <a href="https://vcontainer.hadashikick.jp/"><strong>VContainer</strong></a>. Yo uso VContainer: es más ligero y sencillo, se parece mucho a usar constructores normales y, a diferencia de Zenject, sigue en desarrollo activo.</p>
-<h3>Cómo recibe una clase sus dependencias</h3>
+<h3>¿Cómo recibe una clase sus dependencias?</h3>
 <p>VContainer ofrece tres formas de recibir dependencias. Las tres se resuelven igual: el contenedor mira qué tipos pide la clase y le pasa lo que tenga registrado para cada uno.</p>
 <p>::::walkthrough{title=“Tres formas de recibir dependencias”}</p>
 <p>:::step{title=“Por constructor (clases puras)”}</p>
@@ -1224,7 +1394,7 @@ public class GameLifetimeScope : LifetimeScope
 </ul>
 <p>Hay una sola instancia, pero sin acceso global: solo la tiene quien la recibe por inyección. Crear una instancia nueva por petición es <code>Lifetime.Transient</code>.
 :::</p>
-<h3>Cuándo inyecta VContainer</h3>
+<h3>¿Cuándo inyecta VContainer?</h3>
 <p>La inyección ocurre en dos casos:</p>
 <ul>
 <li><strong>Objetos que ya están en la escena,</strong> si se han añadido a la lista <em>Auto Inject Game Objects</em> del <code>LifetimeScope</code> o se registran con <code>RegisterComponentInHierarchy</code>. Sus métodos <code>[Inject]</code> se ejecutan desde el <code>Awake</code> del scope, que va antes que el resto por su prioridad en el :term[<em>Script Execution Order</em>]{id=“orden-de-ejecucion”}.</li>
@@ -1451,7 +1621,7 @@ public class GameplayLifetimeScope : LifetimeScope
 </ul>
 <p>Con el Service Locator, las dependencias siguen escondidas dentro de los métodos, y el orden sigue importando, aunque menos. Esas dos son justo las que resuelve la inyección.
 :::</p>
-<h2>Cuál usar</h2>
+<h2>¿Cuál usar?</h2>
 <ul>
 <li><strong>Singleton</strong>: prototipos, <em>game jams</em> y proyectos pequeños donde la velocidad importa más que la flexibilidad. Si sabes que solo habrá un <code>AudioManager</code> y nunca vas a testear nada que lo use, es una opción honesta.</li>
 <li><strong>Service Locator</strong>: cuando quieres desacoplar de las clases concretas sin añadir un framework. Es un paso pequeño desde el singleton y resuelve la mitad de sus problemas.</li>
