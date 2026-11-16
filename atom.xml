@@ -154,15 +154,19 @@ Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyect
 <ul>
 <li><strong><code>Persistent</code></strong> se carga al arrancar y nunca se descarga. Tiene lo común a todo el juego y los datos de la partida, que así sobreviven a cada ida y vuelta entre la carrera y la tienda.</li>
 <li><strong><code>MainMenu</code></strong>, <strong><code>Shop</code></strong> y <strong><code>Race</code></strong> se cargan encima de la persistente y se sustituyen entre sí. Cada una tiene la lógica de su momento de la partida, así que la tienda no carga nada de la carrera, ni al revés.</li>
-<li><strong>Sobre <code>Race</code></strong> se carga la escena de contenido de cada circuito o cinemática.</li>
+<li><strong>Sobre <code>Race</code></strong> se cargan las escenas de contenido de cada circuito: una con la pista y otra con la decoración.</li>
 </ul>
+<p><img src="https://sandroalvoz.github.io/images/posts/carga-aditiva/jerarquia-carrera.png" alt="Jerarquía de Unity durante una carrera, con las escenas Persistent, Race y SloppySuite_Decoration cargadas a la vez" /></p>
+<p>Durante una carrera, la jerarquía muestra las escenas cargadas a la vez. <code>Persistent</code> tiene los servicios, los bootstrappers que los inicializan, los gestores (como el <code>SceneLoader</code> o el <code>AudioManager</code>) y la interfaz común. <code>Race</code> tiene la lógica de la carrera: los coches, los objetos que se recogen, las cámaras y el HUD de cada jugador. <code>SloppySuite_Decoration</code> solo tiene el escenario del circuito.</p>
 <p>Las cuatro escenas principales están en un <code>enum</code>, <code>SceneType</code>. Casi nunca cambian, así que mantener el <code>enum</code> sincronizado con la lista de la build no cuesta nada.</p>
 <p>Las escenas de contenido son otra historia: cada circuito o cinemática nueva es una escena más. Para ellas, el paquete <a href="https://github.com/starikcetin/Eflatun.SceneReference">Eflatun.SceneReference</a> ha sido sumamente útil, porque permite añadir escenas auxiliares de forma escalable y cómoda para todo el equipo:</p>
 <ul>
-<li>Cada circuito (<code>RaceTrack</code>) y cada cinemática (<code>Cutscene</code>) guarda su escena en un campo que se asigna desde el :term[Inspector], arrastrando la escena como cualquier otro asset.</li>
+<li>Cada circuito (<code>RaceTrack</code>) y cada cinemática (<code>Cutscene</code>) guarda sus escenas en campos que se asignan desde el :term[Inspector], arrastrando la escena como cualquier otro asset.</li>
 <li>Guarda el :term[GUID] de la escena, así que renombrarla o reordenar la lista de la build no rompe nada.</li>
 <li>Marca el campo si la escena no está en la lista de la build, o está desactivada, y ofrece añadirla o activarla con un clic.</li>
 </ul>
+<p><img src="https://sandroalvoz.github.io/images/posts/carga-aditiva/inspector-race-track.png" alt="Inspector del RaceTrack de Bro Beach, con los campos Track Scene y Decoration Scene asignados mediante SceneReference" /></p>
+<p>En el <code>RaceTrack</code> de Bro Beach, <code>Track Scene</code> y <code>Decoration Scene</code> son dos <code>SceneReference</code>. El engranaje a la derecha de cada campo abre las opciones para añadir la escena a la build.</p>
 <p>Sin <code>SceneReference</code>, cada circuito nuevo obligaría a añadir un valor al <code>enum</code> y comprobar que coincide con su <code>buildIndex</code>. Y un desajuste no da ningún error de compilación: simplemente se carga la escena equivocada.</p>
 <p>Las cargas no usan corrutinas como las del ejemplo, sino UniTask, que permite esperar directamente a <code>LoadSceneAsync</code> con <code>await</code>.</p>
 <h2>Conclusión</h2>
