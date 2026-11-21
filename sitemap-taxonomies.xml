@@ -6,12 +6,12 @@
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://sandroalvoz.github.io/categories/Arquitectura/</loc>
+    <loc>https://sandroalvoz.github.io/categories/Game%20Dev/</loc>
     <priority>0.6</priority>
     <changefreq>weekly</changefreq>
   </url>
   <url>
-    <loc>https://sandroalvoz.github.io/categories/Game%20Dev/</loc>
+    <loc>https://sandroalvoz.github.io/categories/Arquitectura/</loc>
     <priority>0.6</priority>
     <changefreq>weekly</changefreq>
   </url>
@@ -32,6 +32,16 @@
   </url>
   <url>
     <loc>https://sandroalvoz.github.io/tags/Escenas/</loc>
+    <priority>0.4</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://sandroalvoz.github.io/tags/Interfaces/</loc>
+    <priority>0.4</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://sandroalvoz.github.io/tags/Object%20Pooling/</loc>
     <priority>0.4</priority>
     <changefreq>monthly</changefreq>
   </url>

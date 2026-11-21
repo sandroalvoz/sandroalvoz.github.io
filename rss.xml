@@ -1,4 +1,294 @@
-<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet href="/rss-style.xsl" type="text/xsl"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>Sandro Alvoz</title><description>Portfolio Personal</description><link>https://sandroalvoz.github.io/</link><language>es</language><atom:link href="https://sandroalvoz.github.io/rss.xml" rel="self" type="application/rss+xml"/><lastBuildDate>Mon, 16 Nov 2026 07:45:23 GMT</lastBuildDate><generator>Astro RSS</generator><item><title>Carga aditiva de escenas</title><link>https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/</link><guid isPermaLink="true">https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/</guid><description>Qué es la carga aditiva, y cómo y cuándo usarla</description><pubDate>Sun, 15 Nov 2026 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;En Unity, la forma más directa y simple de crear un juego es incluyendo una escena por nivel, junto con todas sus necesidades: el jugador, la cámara, la UI, gestores...
+<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet href="/rss-style.xsl" type="text/xsl"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>Sandro Alvoz</title><description>Portfolio Personal</description><link>https://sandroalvoz.github.io/</link><language>es</language><atom:link href="https://sandroalvoz.github.io/rss.xml" rel="self" type="application/rss+xml"/><lastBuildDate>Sat, 21 Nov 2026 21:30:21 GMT</lastBuildDate><generator>Astro RSS</generator><item><title>Objetos usables en Super Poky Racers</title><link>https://sandroalvoz.github.io/posts/item-usable-escalable/</link><guid isPermaLink="true">https://sandroalvoz.github.io/posts/item-usable-escalable/</guid><description>Diseño de un sistema escalable a través de interfaces y separación de responsabilidades.</description><pubDate>Sat, 21 Nov 2026 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;En &lt;strong&gt;Super Poky Racers&lt;/strong&gt;, los objetos usables son contenido y deben añadirse, retirarse y modificarse durante todo el desarrollo. Si añadir un objeto supone modificar el control del jugador, la IA, o el gestor de colisiones del coche, cada cambio es una oportunidad de romper algo que ya funcionaba. Es por esto que, desde el comienzo del desarrollo, una de nuestras mayores preocupaciones fue garantizar la escalabilidad y facilitar la implementación de objetos usables.&lt;/p&gt;
+&lt;p&gt;Nuestra implementación se basa en dos partes principales:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;La :term[interfaz] &lt;code&gt;IUsable&lt;/code&gt;&lt;/strong&gt;. Representa todo lo que define a un objeto usable.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;El contexto de uso, &lt;code&gt;UsableContext&lt;/code&gt;&lt;/strong&gt;. Es la información que necesita el objeto para ser utilizado.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Con esta estructura, cada objeto define su propia lógica, pero todos se usan de la misma forma.&lt;/p&gt;
+&lt;p&gt;En la práctica, la lógica de cada objeto es mínima. Esto es posible gracias a una buena :term[separación de responsabilidades]: lo que hace un objeto, ya sea aplicar un efecto, lanzar un proyectil, o colocar una trampa, queda en manos del resto de sistemas del juego.
+Por ejemplo, el adhesivo especial, que aumenta el agarre del coche durante unos segundos, se limita a esto:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public override void Use(UsableContext context)
+{
+    Car user = context.User.GetComponent&amp;lt;Car&amp;gt;();
+    if (user == null)
+        return;
+    user.EffectsController.AddEffectWithDuration(EffectTypes.Stickup, duration);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;El objeto se apoya en el controlador de efectos del coche para que este cumpla su función. En la mayoría de casos, los objetos usables consisten en reaprovechar funcionalidades ya existentes. Esto permite que añadir objetos usables sea sumamente fácil.&lt;/p&gt;
+&lt;h2&gt;El contrato: &lt;code&gt;IUsable&lt;/code&gt;, &lt;code&gt;Item&lt;/code&gt; y &lt;code&gt;Usable&lt;/code&gt;&lt;/h2&gt;
+&lt;p&gt;En el código, un objeto usable se construye con tres piezas: la interfaz que dice cómo se usa, la clase base de todos los items del juego y la clase que une ambas partes.&lt;/p&gt;
+&lt;p&gt;::::walkthrough{title=&quot;De la interfaz al objeto usable&quot;}&lt;/p&gt;
+&lt;p&gt;:::step{title=&quot;IUsable&quot;}&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public interface IUsable
+{
+    void Use(UsableContext context);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;La interfaz tiene &lt;a href=&quot;#L3&quot;&gt;un único método&lt;/a&gt; en el que se define la lógica del objeto usable, y cada objeto usable está obligado a definir el suyo.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;IUsable&lt;/code&gt; es una :term[abstracción]: describe qué se puede hacer con un objeto usable, usarlo, pero no cómo. El control del jugador y la IA trabajan siempre con esa abstracción, así que les sirve cualquier objeto que la cumpla: un cohete, un escudo o uno que todavía no existe.
+:::&lt;/p&gt;
+&lt;p&gt;:::step{title=&quot;Item&quot;}&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public abstract class Item : ScriptableObject
+{
+    [SerializeField] private ItemAssetData assetData; // id, nombre, descripción, icono, rareza, precio
+}
+
+public abstract class Equipment : Item
+{
+    [SerializeField] private ItemStats stats;
+    [SerializeField] private GameObject prefab;
+    [SerializeField] private Synergy synergy;
+}
+
+public abstract class Usable : Item, IUsable
+{
+    public abstract void Use(UsableContext context);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;En Super Poky Racers, los &lt;em&gt;items&lt;/em&gt; pueden ser usables o equipables y heredan de la clase &lt;code&gt;Item&lt;/code&gt;. &lt;code&gt;Item&lt;/code&gt;, a través de &lt;a href=&quot;#L3&quot;&gt;&lt;code&gt;ItemAssetData&lt;/code&gt;&lt;/a&gt; incluye toda la información necesaria para que un objeto pueda representarse en la UI y el sistema de guardado.&lt;/p&gt;
+&lt;p&gt;Por otra parte, &lt;code&gt;Item&lt;/code&gt; es un :term[Scriptable Object]{id=&quot;scriptable-object&quot;}. Esto permite que cada item sea un asset que se crea y ajusta desde el editor de Unity. De esta manera:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;el equipo puede hacer cambios en ellos sin necesidad de un programador&lt;/li&gt;
+&lt;li&gt;los items se ven reflejados de forma directa en el control de versiones
+:::&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;:::step{title=&quot;Usable&quot;}&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public abstract class Item : ScriptableObject
+{
+    [SerializeField] private ItemAssetData assetData; // id, nombre, descripción, icono, rareza, precio
+}
+
+public abstract class Equipment : Item
+{
+    [SerializeField] private ItemStats stats;
+    [SerializeField] private GameObject prefab;
+    [SerializeField] private Synergy synergy;
+}
+
+public abstract class Usable : Item, IUsable
+{
+    public abstract void Use(UsableContext context);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;&lt;a href=&quot;#L13&quot;&gt;&lt;code&gt;Usable&lt;/code&gt;&lt;/a&gt; hereda de &lt;code&gt;Item&lt;/code&gt; e implementa &lt;code&gt;IUsable&lt;/code&gt;. Como &lt;a href=&quot;#L15&quot;&gt;&lt;code&gt;Use&lt;/code&gt;&lt;/a&gt; es abstracto, &lt;code&gt;Usable&lt;/code&gt; es una :term[clase abstracta]{id=&quot;clase-abstracta&quot;} y no se puede usar por sí misma: solo sus clases hijas, que son los objetos concretos.
+:::&lt;/p&gt;
+&lt;p&gt;:::step{title=&quot;IGoapItem&quot;}&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public abstract class Usable : Item, IUsable, IGoapItem
+{
+    public abstract void Use(UsableContext context);
+    public abstract void RegisterBeliefs(Dictionary&amp;lt;string, AgentBelief&amp;gt; beliefs, IGoapContext context);
+    public abstract void RegisterActions(HashSet&amp;lt;AgentAction&amp;gt; actions, Dictionary&amp;lt;string, AgentBelief&amp;gt; beliefs);
+    public abstract void RegisterGoals(HashSet&amp;lt;AgentGoal&amp;gt; goals, Dictionary&amp;lt;string, AgentBelief&amp;gt; beliefs);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;El jugador decide por sí mismo cuándo usar un objeto, pero un NPC controlado por IA no. &lt;code&gt;IGoapItem&lt;/code&gt; permite definir condiciones en las que llevar a cabo una acción. Por ejemplo, el adhesivo especial debe usarse cuando el coche tenga poco agarre.&lt;/p&gt;
+&lt;p&gt;Sin profundizar en la IA de los agentes, podemos ver que:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;IUsable&lt;/code&gt; dice &lt;strong&gt;cómo&lt;/strong&gt; se usa el objeto.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;IGoapItem&lt;/code&gt; dice &lt;strong&gt;cuándo&lt;/strong&gt; conviene usarlo.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Son dos abstracciones distintas para dos necesidades distintas. El control del jugador solo trabaja con &lt;code&gt;IUsable&lt;/code&gt;, y el planificador nunca llama a &lt;code&gt;Use&lt;/code&gt;: cuando la IA decide usar un objeto, lo hace a través de &lt;code&gt;IUsable&lt;/code&gt;, igual que el jugador. De esta manera, podemos determinar el comportamiento de los agentes manteniendo una correcta escalabilidad y separación de responsabilidades.&lt;/p&gt;
+&lt;p&gt;Es lo que propone el principio de &lt;strong&gt;:term[segregación de interfaces]{id=&quot;segregacion-de-interfaces&quot;}&lt;/strong&gt;, la I de :term[SOLID]: ninguna clase debería depender de métodos que no usa. El jugador solo necesita &lt;code&gt;Use&lt;/code&gt;, y por eso solo ve &lt;code&gt;IUsable&lt;/code&gt;.
+:::&lt;/p&gt;
+&lt;p&gt;::::&lt;/p&gt;
+&lt;h2&gt;El contexto de uso: &lt;code&gt;UsableContext&lt;/code&gt;&lt;/h2&gt;
+&lt;p&gt;&lt;code&gt;Use&lt;/code&gt; no recibe el coche, sino un contexto:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public struct UsableContext
+{
+    public GameObject User;
+    public Vector3 Position;
+    public Vector3 Forward;
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Un objeto se puede usar desde dos sitios: el jugador pulsa un botón, o la IA de un rival decide que es buen momento. Los dos caminos montan su contexto y acaban en el mismo método:&lt;/p&gt;
+&lt;p&gt;::::diagram&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;graph LR
+  PlayerController --&amp;gt; ItemUseCommand
+  ItemUseCommand --&amp;gt; IUsable
+  IA --&amp;gt; UseItemStrategy
+  UseItemStrategy --&amp;gt; IUsable
+  IUsable --&amp;gt; O[&quot;IUsable.Use&quot;]
+&lt;/code&gt;&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;PlayerController&lt;/strong&gt;: lee el input del jugador y envía un comando con el coche y el hueco del inventario.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;ItemUseCommand&lt;/strong&gt;: busca el objeto en el inventario, monta el contexto, llama a &lt;code&gt;Use&lt;/code&gt; y lo retira del inventario.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;IA&lt;/strong&gt;: el rival decide qué objeto usar y monta el contexto con su propio coche.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;UseItemStrategy&lt;/strong&gt;: la acción de la IA que usa el objeto. Recibe ese contexto y llama al mismo &lt;code&gt;Use&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;IUsable&lt;/strong&gt;: la abstracción con la que trabajan el jugador y la IA.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;IUsable.Use&lt;/strong&gt;: la lógica concreta de cada objeto, oculta tras la abstracción.
+::::&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Además, retirar el objeto del inventario y comunicar su uso queda a manos de quien lo usa:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;Usable item = actor.RaceInventory?.GetUsable(slotIndex);
+if (item is IUsable usable)
+{
+    UsableContext ctx = new UsableContext
+    {
+        User = actor.gameObject,
+        Position = actor.transform.position,
+        Forward = actor.transform.forward
+    };
+    usable.Use(ctx);
+    actor.RaceInventory.RemoveUsableAt(slotIndex);
+    actor.NotifyItemUsed(item.Id);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Cada pieza tiene una sola razón para cambiar, que es lo que pide el principio de &lt;strong&gt;:term[responsabilidad única]{id=&quot;responsabilidad-unica&quot;}&lt;/strong&gt;. El objeto solo se encarga de su efecto. &lt;code&gt;ItemUseCommand&lt;/code&gt; se encarga del inventario y del aviso, y si mañana cambia cómo se gestiona el inventario, no hay que tocar ningún objeto.&lt;/p&gt;
+&lt;p&gt;En caso de que un objeto futuro necesite más información, como por ejemplo: qué objeto se ha usado antes, podemos modificar &lt;code&gt;UsableContext&lt;/code&gt; para facilitar esa información. De este modo, la :term[firma] de &lt;code&gt;Use&lt;/code&gt; no cambia y los objetos que ya existen siguen funcionando. El sistema está abierto a ampliarse, pero cerrado a modificar lo que ya funciona: es el principio &lt;strong&gt;:term[abierto/cerrado]{id=&quot;abierto-cerrado&quot;}&lt;/strong&gt;.&lt;/p&gt;
+&lt;p&gt;:::quiz[Un objeto nuevo necesita saber en qué posición de la carrera va quien lo usa. ¿Cuál es la forma menos invasiva de dárselo?]&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] Añadir un parámetro &lt;code&gt;position&lt;/code&gt; a &lt;code&gt;Use&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[x] Añadir un campo a &lt;code&gt;UsableContext&lt;/code&gt; y rellenarlo donde se monta el contexto&lt;/li&gt;
+&lt;li&gt;[ ] Crear una interfaz &lt;code&gt;IRankedUsable&lt;/code&gt; con su propio &lt;code&gt;Use&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Un parámetro nuevo en &lt;code&gt;Use&lt;/code&gt; obliga a cambiar todos los objetos que ya existen. Una interfaz aparte obliga al jugador y a la IA a distinguir entre dos tipos de objeto, que es justo lo que &lt;code&gt;IUsable&lt;/code&gt; evita. El campo en el contexto solo toca los dos sitios que lo montan, y los objetos que no lo necesitan lo ignoran.
+:::&lt;/p&gt;
+&lt;h2&gt;El objeto usable y sus consecuencias&lt;/h2&gt;
+&lt;p&gt;Al usar el cohete entran en juego dos cosas distintas que es fácil confundir:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;RocketItem&lt;/code&gt;&lt;/strong&gt;, el objeto usable. Es un asset, el mismo para todos los coches que llevan un cohete. Su &lt;code&gt;Use&lt;/code&gt; se ejecuta una vez y termina.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;RocketObject&lt;/code&gt;&lt;/strong&gt;, el cohete que vuela. Es un objeto independiente que funciona y existe en el mundo del juego por si mismo, con sus componentes, su Rigidbody, sus estados y su sensor. Cada cohete lanzado es una instancia distinta en la escena, y existe hasta que explota.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Ahora, el objeto usable (en este caso, &lt;code&gt;RocketItem&lt;/code&gt;) no vuela ni persigue a nadie. Lo único que hace es invocar el cohete y proporcionarle la información necesaria:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public class RocketItem : Usable
+{
+    [SerializeField] private RocketObject rocketPrefab;
+
+    public override void Use(UsableContext context)
+    {
+        GenericPool genericPool = ServiceLocator.Global.Get&amp;lt;GenericPool&amp;gt;();
+        RocketObject rocket = genericPool.Pool&amp;lt;RocketObject&amp;gt;(rocketPrefab.gameObject, context.User.transform.position);
+        rocket.SetupCastable(context.User);
+    }
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;En el juego, esta petición pasa por el sistema de comandos. Aquí se muestra el camino directo al pool genérico.&lt;/p&gt;
+&lt;p&gt;Separar las dos cosas no es solo una cuestión de orden. Como el asset es compartido, no puede guardar nada de un uso concreto: si &lt;code&gt;RocketItem&lt;/code&gt; guardara el objetivo del cohete, dos coches que lo lanzaran a la vez se lo pisarían. Todo lo que trasciende a la llamada a &lt;code&gt;Use&lt;/code&gt; (un objetivo, un temporizador, una posición) vive en lo que se invoca, que tiene una instancia por uso.&lt;/p&gt;
+&lt;p&gt;No todos los objetos invocan algo. El adhesivo especial no crea nada en el mundo, sino que aplica un efecto a través del controlador de efectos del coche. Sin embargo, la idea es la misma: el objeto usable decide qué pasa, y el resultado de ese uso queda en manos de otro elemento.&lt;/p&gt;
+&lt;p&gt;:::quiz[Queremos que la trampa tirachinas desaparezca a los diez segundos de colocarse. ¿Dónde debería guardarse ese temporizador?]&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[ ] En un campo de &lt;code&gt;SlingshotTrapItem&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[x] En el obstáculo que se coloca en la pista&lt;/li&gt;
+&lt;li&gt;[ ] En &lt;code&gt;UsableContext&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;code&gt;SlingshotTrapItem&lt;/code&gt; es un asset compartido: si dos coches colocan una trampa, los dos temporizadores se pisarían. &lt;code&gt;UsableContext&lt;/code&gt; solo existe durante la llamada a &lt;code&gt;Use&lt;/code&gt;. El obstáculo, en cambio, tiene una instancia por cada trampa colocada, así que es el único sitio donde cada temporizador puede ser independiente.
+:::&lt;/p&gt;
+&lt;h2&gt;Sistemas que se reaprovechan&lt;/h2&gt;
+&lt;p&gt;Al revisar los objetos actuales, casi todos caen en una de tres formas de funcionar, y cada una se apoya en un sistema distinto:&lt;/p&gt;
+&lt;table&gt;
+&lt;thead&gt;
+&lt;tr&gt;
+&lt;th&gt;Familia&lt;/th&gt;
+&lt;th&gt;Objetos&lt;/th&gt;
+&lt;th&gt;Sistema en el que se apoya&lt;/th&gt;
+&lt;/tr&gt;
+&lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr&gt;
+&lt;td&gt;Efectos de estado sobre el usuario&lt;/td&gt;
+&lt;td&gt;Escudo, adhesivo, capa fantasmagórica, propulsor&lt;/td&gt;
+&lt;td&gt;El controlador de efectos del coche&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Objeto invocado&lt;/td&gt;
+&lt;td&gt;Cohete, mano pegajosa, fallo de motor&lt;/td&gt;
+&lt;td&gt;Object Pooling genérico&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Trampa en pista&lt;/td&gt;
+&lt;td&gt;Trampa tirachinas, caja sorpresa&lt;/td&gt;
+&lt;td&gt;El grafo de nodos de la pista&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;p&gt;Ninguno de esos sistemas se diseñó exclusivamente para los objetos usables, todos tienen otros usuarios. Esto es lo que hace que la implementación de objetos usables sea sumamente barata.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;El controlador de efectos&lt;/strong&gt; aplica al coche un efecto con duración, lo representa y lo quita al terminar. También lo usan las sinergias entre piezas del coche y la invulnerabilidad que recibe el coche al volver a la pista tras descarrilar.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;El :term[pool]{id=&quot;object-pooling&quot;} genérico&lt;/strong&gt; crea un pool por tipo de componente la primera vez que se le pide uno, así que un objeto invocado nuevo no tiene que registrar nada. De él salen también los efectos visuales de estado y las cajas de objetos de la pista.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;El grafo de la pista&lt;/strong&gt; lo usan el movimiento de los coches y el pathfinding de la IA. Las trampas heredan de &lt;code&gt;TrapItem&lt;/code&gt;, que coloca el obstáculo en el nodo de detrás del coche y lo marca como bloqueado para que la IA lo esquive. Las trampas concretas ni siquiera sobrescriben &lt;code&gt;Use&lt;/code&gt;: solo cambian el prefab del obstáculo.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;En los tres casos, cada cosa se resuelve en un solo sitio. Cómo se coloca una trampa y se bloquea su nodo está en &lt;code&gt;TrapItem&lt;/code&gt;, no en cada trampa, y cómo se recicla un objeto invocado está en el pool, no en cada proyectil. Es el principio :term[DRY]: si hay que cambiar cómo funciona algo, se cambia una vez.&lt;/p&gt;
+&lt;h2&gt;Interfaces pequeñas para lo que se repite&lt;/h2&gt;
+&lt;p&gt;Lo que &lt;code&gt;IUsable&lt;/code&gt; hace con el jugador y la IA, otras interfaces lo hacen con lo que se invoca en el mundo. Los objetos invocados comparten varias necesidades que no tienen nada que ver entre sí, y cada una es una abstracción de uno o dos miembros. Así, cada sistema del juego trabaja solo con la parte del objeto que le importa:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;ICastable&lt;/code&gt;&lt;/strong&gt;: proporciona información a un objeto sobre quién lo ha usado, o mejor dicho, invocado. Cuando alguien lanza un cohete, no queremos que éste lo persiga. El uso de &lt;code&gt;ICastable&lt;/code&gt; permite que el cohete conozca a su usuario y, por tanto, que lo ignore.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;ICollidable&lt;/code&gt;&lt;/strong&gt;: determina qué hace al chocar con un coche. El gestor de colisiones del coche llama a &lt;code&gt;Handle(context)&lt;/code&gt; sea lo que sea con lo que ha chocado. Depende de una abstracción y no de los objetos concretos, que es lo que pide el principio de &lt;strong&gt;:term[inversión de dependencias]&lt;/strong&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;&lt;code&gt;IPoolable&lt;/code&gt;&lt;/strong&gt;: cómo volver al pool. El pool recupera cualquier cosa que la cumpla.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;pre&gt;&lt;code&gt;public interface ICastable
+{
+    GameObject CastedBy { get; }
+    void SetupCastable(GameObject castedBy);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Como son independientes, cada objeto implementa solo las interfaces que necesita. El fallo de motor, por ejemplo, afecta a todos los coches de su área, incluyendo a su usuario, por lo que no necesita implementar &lt;code&gt;ICastable&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;:::quiz[Queremos añadir una mancha de aceite: sale del pool, se queda en la pista y hace derrapar a cualquier coche que la pise, incluido quien la soltó. ¿Qué interfaces necesita su objeto?]&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;[x] &lt;code&gt;ICollidable&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[ ] &lt;code&gt;ICastable&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;[x] &lt;code&gt;IPoolable&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Necesita &lt;code&gt;ICollidable&lt;/code&gt; para reaccionar cuando un coche la pisa, e &lt;code&gt;IPoolable&lt;/code&gt; para volver al pool cuando desaparece. &lt;code&gt;ICastable&lt;/code&gt; sobra: como afecta también a quien la soltó, no necesita saber quién fue.
+:::&lt;/p&gt;
+&lt;h2&gt;El cohete, pieza a pieza&lt;/h2&gt;
+&lt;p&gt;El cohete es el objeto que más piezas combina, y por eso sirve para ver el sistema completo. Como ya vimos, el objeto usable y lo que ocurre en la pista no son lo mismo: &lt;code&gt;RocketItem&lt;/code&gt; solo invoca el cohete, y todo su comportamiento en el mundo del juego está en &lt;code&gt;RocketObject&lt;/code&gt;. Ese comportamiento, a su vez, se construye a partir de interfaces:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;public class RocketObject : MonoBehaviour,
+    ISteeringBehaviourUser,              // persigue un objetivo con steering behaviours
+    ICastable,                           // sabe quién lo lanzó
+    ICollidable,                         // decide qué pasa al chocar con un coche
+    IPoolable,                           // vuelve al pool al explotar
+    ISensorAreaObserverUser&amp;lt;Rigidbody&amp;gt;,  // detecta coches con el mismo sensor que la IA
+    IAggroAreaListener,
+    ITargetter                           // expone a su objetivo
+&lt;/code&gt;&lt;/pre&gt;
+&lt;p&gt;Casi ninguna de esas piezas se creó para el cohete:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;El sensor que detecta objetivos es el mismo con el que los rivales perciben a otros coches&lt;/li&gt;
+&lt;li&gt;El movimiento pasa por un wrapper genérico de steering pensado para cualquier cosa que persiga algo.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;ITargetter&lt;/code&gt; permite que un rival pregunte si alguien le está apuntando y decida sacar el escudo.&lt;/li&gt;
+&lt;li&gt;Lo único propio del cohete son sus fases (despegar, buscar objetivo y perseguirlo), que se basa en una máquina de estados pequeña.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Al ser un objeto pooleable, &lt;code&gt;OnEnable&lt;/code&gt; reinicia su información:&lt;/p&gt;
+&lt;pre&gt;&lt;code&gt;private void OnEnable()
+{
+    _blackboard.LaunchTimer = 0f;
+    _blackboard.LockedTarget = null;
+    _blackboard.SpawnPosition = _rb.position;
+    // ...
+    _stateMachine?.ForceTransitionTo(RocketStates.Launching);
+}
+&lt;/code&gt;&lt;/pre&gt;
+&lt;h2&gt;Conclusiones&lt;/h2&gt;
+&lt;p&gt;El cohete resume todo lo que hemos mencionado hasta ahora:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Como objeto usable&lt;/strong&gt;, se usa igual que el adhesivo, a través de &lt;code&gt;IUsable&lt;/code&gt;. Quien lo usa puede cambiar un objeto por otro sin notar la diferencia, cumpliendo con el principio de :term[sustitución de Liskov]{id=&quot;sustitucion-de-liskov&quot;}.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Como objeto en el mundo&lt;/strong&gt;, es una suma de interfaces pequeñas y de sistemas que ya existían.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Ni el control del jugador, ni la IA, ni el gestor de colisiones del coche trabajan con &lt;code&gt;RocketObject&lt;/code&gt;, sino con las abstracciones que implementa: &lt;code&gt;IUsable&lt;/code&gt;, &lt;code&gt;ITargetter&lt;/code&gt; o &lt;code&gt;ICollidable&lt;/code&gt;. Es lo que hace de las interfaces y de la separación de responsabilidades herramientas tan útiles en un videojuego: el juego puede crecer objeto a objeto sin modificar las piezas que ya funcionan.&lt;/p&gt;
+&lt;p&gt;Con todo esto, un objeto nuevo supone:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Un valor nuevo en el enum &lt;code&gt;ItemId&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;Una clase que herede de &lt;code&gt;Usable&lt;/code&gt; (o de &lt;code&gt;TrapItem&lt;/code&gt;, si es una trampa) con su &lt;code&gt;Use&lt;/code&gt; y los métodos de &lt;code&gt;IGoapItem&lt;/code&gt;, para que los rivales sepan cuándo usarlo.&lt;/li&gt;
+&lt;li&gt;El asset creado desde el menú y añadido a la base de datos de objetos.&lt;/li&gt;
+&lt;li&gt;Si se invoca en el mundo, un prefab con un componente que implemente &lt;code&gt;IPoolable&lt;/code&gt; y, si las necesita, &lt;code&gt;ICastable&lt;/code&gt; e &lt;code&gt;ICollidable&lt;/code&gt;.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2&gt;Ventajas y desventajas de la separación de responsabilidades&lt;/h2&gt;
+&lt;p&gt;Todo lo anterior se reduce a una decisión: que cada pieza haga una sola cosa y se relacione con las demás solo a través de abstracciones. Esa separación tiene ventajas claras:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Los cambios son locales.&lt;/strong&gt; Un objeto nuevo es un archivo nuevo. Varias personas pueden añadir objetos a la vez sin tocar los mismos archivos, y un error en un objeto no rompe los demás.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Los sistemas se reaprovechan.&lt;/strong&gt; El pool, los efectos y el grafo de la pista no se hicieron para los objetos y tienen otros usuarios. Mejorar uno de ellos mejora a todos los que lo usan.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;El jugador y la IA son intercambiables.&lt;/strong&gt; Los dos usan los objetos de la misma forma, así que un objeto que funciona para uno funciona para el otro.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;También tiene costes:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Hay que saltar entre más archivos para entender un objeto.&lt;/strong&gt; Para seguir lo que hace el cohete hay que pasar por &lt;code&gt;RocketItem&lt;/code&gt;, el pool, &lt;code&gt;RocketObject&lt;/code&gt;, sus estados, el sensor y el wrapper de steering. Depurar un comportamiento que cruza varias piezas puede requerir más tiempo y carga cognitiva que leer una clase grande.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Un sistema compartido es un punto de cambio delicado.&lt;/strong&gt; Si cambia el controlador de efectos, cambian a la vez los objetos de efecto, las sinergias y la invulnerabilidad tras descarrilar. Reaprovechar también es depender.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;La estructura puede pesar más que la lógica.&lt;/strong&gt; La lógica del adhesivo son cuatro líneas, pero necesita una clase, un asset, una entrada en la base de datos y su parte de &lt;code&gt;IGoapItem&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2&gt;Aspectos de mejora&lt;/h2&gt;
+&lt;p&gt;Hay un punto en el que el sistema no cumple del todo lo que se ha contado: &lt;strong&gt;las dependencias están escondidas en &lt;code&gt;Use&lt;/code&gt;&lt;/strong&gt;. Varios objetos piden el pool o el sistema de comandos al :term[service locator]{id=&quot;service-locator&quot;} dentro de &lt;code&gt;Use&lt;/code&gt;. Funciona, pero no se ve desde fuera qué necesita cada objeto, y es donde peor se cumple la inversión de dependencias. El contexto de uso podría llevar esos servicios, igual que ya lleva a quien lo usa.&lt;/p&gt;
+</content:encoded><category>Unity</category><category>C#</category><category>Interfaces</category><category>Arquitectura</category><category>Object Pooling</category><author>Sandro Alvoz</author></item><item><title>Carga aditiva de escenas</title><link>https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/</link><guid isPermaLink="true">https://sandroalvoz.github.io/posts/carga-aditiva-de-escenas/</guid><description>Qué es la carga aditiva, y cómo y cuándo usarla</description><pubDate>Sun, 15 Nov 2026 00:00:00 GMT</pubDate><content:encoded>&lt;p&gt;En Unity, la forma más directa y simple de crear un juego es incluyendo una escena por nivel, junto con todas sus necesidades: el jugador, la cámara, la UI, gestores...
 Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyecto:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;tiempos de carga largos&lt;/li&gt;
