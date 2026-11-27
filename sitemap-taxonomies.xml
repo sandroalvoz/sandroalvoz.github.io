@@ -36,6 +36,16 @@
     <changefreq>monthly</changefreq>
   </url>
   <url>
+    <loc>https://sandroalvoz.github.io/tags/FSM/</loc>
+    <priority>0.4</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
+    <loc>https://sandroalvoz.github.io/tags/IA/</loc>
+    <priority>0.4</priority>
+    <changefreq>monthly</changefreq>
+  </url>
+  <url>
     <loc>https://sandroalvoz.github.io/tags/Interfaces/</loc>
     <priority>0.4</priority>
     <changefreq>monthly</changefreq>

@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://sandroalvoz.github.io/</id>
     <title>Sandro Alvoz</title>
-    <updated>2026-11-21T00:00:00.000Z</updated>
+    <updated>2026-11-27T00:00:00.000Z</updated>
     <generator>Astro - Feed Library</generator>
     <author>
         <name>Sandro Alvoz</name>
@@ -14,6 +14,295 @@
     <subtitle>Portfolio Personal</subtitle>
     <icon>https://sandroalvoz.github.io/favicon.ico</icon>
     <rights>All rights reserved 2026, Sandro Alvoz</rights>
+    <entry>
+        <title type="html"><![CDATA[Máquinas de estado: distinciones y usos alternativos]]></title>
+        <id>https://sandroalvoz.github.io/posts/maquinas-de-estado/</id>
+        <link href="https://sandroalvoz.github.io/posts/maquinas-de-estado/"/>
+        <updated>2026-11-27T00:00:00.000Z</updated>
+        <summary type="html"><![CDATA[Profundizando en el uso de FSMs.]]></summary>
+        <content type="html"><![CDATA[<p>Una máquina de estados finita (FSM) es un modelo de comportamiento formado por:</p>
+<ul>
+<li>un <strong>conjunto finito de estados</strong>, de los cuales solamente uno está activo al mismo tiempo</li>
+<li>un <strong>estado inicial</strong></li>
+<li><strong>transiciones</strong>, que indican cómo y cuándo se puede pasar de un estado a otro.</li>
+</ul>
+<p>Lo que haga el sistema depende solo del estado activo y de lo que ocurra mientras está en él. Un mismo estímulo puede producir respuestas distintas según el estado: por ejemplo, pulsar el botón de salto no hace lo mismo en el suelo que en el aire.</p>
+<p>En videojuegos, este modelo se suele implementar con el State Pattern: cada estado es un objeto que encapsula su propio comportamiento, y el objeto controlado delega en el estado activo en lugar de llenarse de condicionales. El Animator Controller de Unity es un ejemplo sumamente conocido: los nodos son estados que reproducen una animación, las flechas son transiciones con condiciones sobre parámetros, y el personaje nunca está en dos nodos de la misma capa a la vez.</p>
+<p>Este post se divide en varias partes:</p>
+<ul>
+<li>la implementación genérica de FSM</li>
+<li>distinciones y aspectos que debemos tener en cuenta a la hora de diseñar una máquina de estados</li>
+<li>usos alternativos que merece la pena explorar</li>
+</ul>
+<h2>La base genérica</h2>
+<p>La implementación se basa en la <a href="https://github.com/adammyhre/Unity-Hierarchical-StateMachine">máquina de estados jerárquica de git-amend</a>. De ella tomo la idea central: cada estado decide por sí mismo a qué estado quiere pasar, y la máquina solo se encarga de ejecutar el cambio.
+La mía es plana, sin subestados, e incorpora el uso de una <strong>blackboard</strong> como contenedor de información centralizado entre todos los estados de una FSM. En la de git-amend, cada estado recibe en su constructor un objeto de contexto concreto del jugador; aquí la blackboard es un parámetro de tipo de la propia máquina, así que cada FSM declara la suya y el controlador se la entrega al estado que entra. La idea la saqué de los árboles de comportamiento, donde todos los nodos leen y escriben en el mismo sitio en lugar de pasarse la información unos a otros.</p>
+<p>Toda máquina del proyecto se monta con cuatro piezas:</p>
+<pre><code class="language-mermaid">classDiagram
+  direction LR
+  class StateMachineBlackboard {
+    &lt;&lt;abstract&gt;&gt;
+  }
+  class State~T, B~ {
+    &lt;&lt;abstract&gt;&gt;
+    +T StateKey
+    #B Blackboard
+    +EnterState(B)
+    +ExitState()
+    +UpdateState()
+    +FixedUpdateState()
+    +GetNextState() T
+  }
+  class StateMachineController~T, B~ {
+    &lt;&lt;abstract&gt;&gt;
+    #Dictionary~T, State~ States
+    #State CurrentState
+    +OnUpdate()
+    +OnFixedUpdate()
+    +ForceTransitionTo(T)
+  }
+  StateMachineController o-- State : guarda uno por clave
+  StateMachineController --&gt; StateMachineBlackboard : se la pasa al estado que entra
+  State --&gt; StateMachineBlackboard : lee
+</code></pre>
+<ul>
+<li><strong>Un enum</strong> (<code>T</code>) con los estados posibles. Es la clave con la que se identifican.</li>
+<li><strong>Una blackboard</strong> (<code>B</code>) con los datos que comparten los estados: el coche, su velocidad, temporizadores…</li>
+<li><strong>Una clase por estado</strong>, que hereda de <code>State&lt;T, B&gt;</code>.</li>
+<li><strong>Un controlador</strong>, que hereda de <code>StateMachineController&lt;T, B&gt;</code>, registra los estados y decide cuándo se cambia de uno a otro.</li>
+</ul>
+<p>::::walkthrough{title=“La máquina del coche, pieza a pieza” diff=“false”}</p>
+<p>:::step{title=“Los estados posibles”}</p>
+<pre><code class="language-csharp">public enum CarStates
+{
+    Idle,
+    Moving,
+    Derailed,
+    Falling
+}
+</code></pre>
+<p>El enum es la lista cerrada de estados. El uso de una enumeración permite que el compilador avise si se pide un estado que no existe, añade robustez y exactitud y permite usarlo como clave de un diccionario.
+:::</p>
+<p>:::step{title=“La blackboard”}</p>
+<pre><code class="language-csharp">public abstract class StateMachineBlackboard
+{
+    // Vacía: solo sirve de restricción genérica.
+}
+
+public class CarBlackboard : StateMachineBlackboard
+{
+    public Car Car { get; }
+
+    public CarBlackboard(Car car) =&gt; Car = car;
+}
+</code></pre>
+<p>La blackboard funciona como controlador central de datos. Todas las blackboards derivan de <a href="#L1-4">una clase base abstracta</a>.</p>
+<p>Cada máquina define su blackboard con la información que sus estados necesitarán. CarBlackboard, por ejemplo, <a href="#L8">sólo guarda el coche</a>, a partir del cual se puede leer el resto de la información, como la velocidad, el controlador de animaciones o los efectos activos. Todos los estados reciben la misma instancia, por lo que la información se mantiene sincronizada.
+:::</p>
+<p>:::step{title=“El estado”}</p>
+<pre><code class="language-csharp">public abstract class State&lt;T, B&gt; where T : Enum where B : StateMachineBlackboard
+{
+    public T StateKey { get; private set; }
+    protected B Blackboard;
+
+    public State(T stateKey) =&gt; StateKey = stateKey;
+
+    public virtual void EnterState(B blackboard) =&gt; Blackboard = blackboard;
+    public abstract void ExitState();
+    public abstract void UpdateState();
+    public abstract void FixedUpdateState();
+    public abstract T GetNextState();
+}
+</code></pre>
+<p>Cada estado conoce <a href="#L3">su propia clave</a> y recibe la blackboard <a href="#L8">al entrar</a>. A partir de ahí, tiene tres responsabilidades:</p>
+<ul>
+<li><strong>Comportarse</strong>: <a href="#L10-11"><code>UpdateState</code> y <code>FixedUpdateState</code></a> se ejecutan mientras el estado esté activo.</li>
+<li><strong>Prepararse y limpiar</strong>: <code>EnterState</code> y <a href="#L9"><code>ExitState</code></a> encienden y apagan lo que el estado usa (una animación, un efecto, un temporizador).</li>
+<li><strong>Decidir a dónde ir</strong>: <a href="#L12"><code>GetNextState</code></a> devuelve la clave del estado al que quiere pasar. Si devuelve la suya, el estado se mantiene activo.
+:::</li>
+</ul>
+<p>:::step{title=“El controlador”}</p>
+<pre><code class="language-csharp">public void OnUpdate()
+{
+    if (CurrentState == null) return;
+
+    T nextState = CurrentState.GetNextState();
+    if (!IsTransitioning &amp;&amp; nextState.Equals(CurrentState.StateKey))
+        CurrentState.UpdateState();
+    else OnTransitionToState(nextState);
+}
+</code></pre>
+<p>Cada frame, el controlador <a href="#L5">pregunta al estado actual</a> a dónde quiere ir. Si quiere quedarse, <a href="#L6-7">lo actualiza</a>; si no, <a href="#L8">hace la transición</a>.</p>
+<p>El controlador no sabe nada de las reglas de transición, ya que éstas viven en los propios estados a través de State.GetNextState. Añadir un estado nuevo no supone modificar el controlador, sino únicamente registrarlo.
+:::</p>
+<p>:::step{title=“La transición entre estados”}</p>
+<pre><code class="language-csharp">public void ForceTransitionTo(T state) =&gt; OnTransitionToState(state);
+
+protected virtual void OnTransitionToState(T nextState)
+{
+    IsTransitioning = true;
+    CurrentState?.ExitState();
+    CurrentState = States[nextState];
+    CurrentState.EnterState(Blackboard);
+    IsTransitioning = false;
+}
+</code></pre>
+<p>Una transición siempre tiene el mismo orden: <a href="#L6">sale el estado actual</a>, <a href="#L7">se busca el nuevo por su clave</a> y <a href="#L8">entra con la blackboard</a>. Solo hay un <code>CurrentState</code>, por lo que es imposible que haya dos estados activos de forma simultánea.</p>
+<p>Hay dos formas de llegar aquí: que el propio estado lo decida en <code>GetNextState</code>, o que alguien de fuera llame a <a href="#L1"><code>ForceTransitionTo</code></a>.</p>
+<p>El método es <a href="#L3"><code>virtual</code></a> para que cada máquina pueda reaccionar a transiciones concretas, como se ve en el siguiente paso.
+:::</p>
+<p>:::step{title=“Una máquina de estados específica”}</p>
+<pre><code class="language-csharp">public class CarStateMachineController : StateMachineController&lt;CarStates, CarBlackboard&gt;
+{
+    public CarStateMachineController(CarBlackboard blackboard) : base(blackboard)
+    {
+        States = new Dictionary&lt;CarStates, State&lt;CarStates, CarBlackboard&gt;&gt;
+        {
+            { CarStates.Idle, new CarIdleState() },
+            { CarStates.Moving, new CarMovingState() },
+            { CarStates.Derailed, new CarDerailedState() },
+            { CarStates.Falling, new CarFallingState() },
+        };
+
+        CurrentState = States[CarStates.Idle];
+        CurrentState.EnterState(blackboard);
+    }
+
+    protected override void OnTransitionToState(CarStates nextState)
+    {
+        if (CurrentState.StateKey == CarStates.Derailed &amp;&amp; nextState == CarStates.Idle)
+            Blackboard.Car.NotifyDerailRecoveryEnded();
+
+        base.OnTransitionToState(nextState);
+    }
+}
+</code></pre>
+<p>La máquina concreta solo <a href="#L5-11">registra sus estados</a> y <a href="#L13-14">determina el estado inicial</a>. Toda la lógica de actualización y transición la hereda.</p>
+<p>La <a href="#L17-23">sobrescritura de la transición</a> avisa al coche cuando termina un descarrilamiento. En este caso, esto es importante para coordinarla con otra máquina de estados.
+:::</p>
+<p>:::step{title=“Ciclo de vida”}</p>
+<pre><code class="language-csharp">protected virtual void Awake()
+{
+    _blackboard = new CarBlackboard(this);
+    _stateMachineController = new CarStateMachineController(_blackboard);
+}
+
+protected virtual void Update()
+{
+    _stateMachineController?.OnUpdate();
+}
+</code></pre>
+<p>Los estados son :term[clases puras]{id=“clase-pura”}, por lo que la máquina de estados tendrá <a href="#L3-4">que existir dentro de una componente <code>MonoBehaviour</code></a> que controle su flujo a través de <a href="#L9"><code>Update</code></a>.
+:::</p>
+<p>::::</p>
+<p>Resumido en un diagrama, esto es lo que pasa cada frame:</p>
+<pre><code class="language-mermaid">flowchart LR
+  U["Update del MonoBehaviour"] --&gt; O["controlador.OnUpdate()"]
+  O --&gt; G{"estado.GetNextState()"}
+  G -- "su propia clave" --&gt; S["estado.UpdateState()"]
+  G -- "otra clave" --&gt; X["estado.ExitState()"]
+  X --&gt; E["nuevo.EnterState(blackboard)"]
+  F["ForceTransitionTo(clave)&lt;br/&gt;desde fuera"] --&gt; X
+</code></pre>
+<h2>¿Qué es un estado y qué no?</h2>
+<p>La máquina del coche tiene cuatro estados: <code>Idle</code>, <code>Moving</code>, <code>Derailed</code> y <code>Falling</code>. A la hora de determinar qué es un estado y qué no, debemos tener en cuenta varios aspectos:</p>
+<ol>
+<li><strong>¿Excluye a los demás?</strong> Un coche no puede estar parado y descarrilado a la vez. Si dos “estados” de un objeto pueden ocurrir al mismo tiempo, no deben formar parte de una misma máquina de estados.</li>
+<li><strong>¿Cambia el comportamiento?</strong> Descarrilado, el piloto se marea y el coche espera a que se agote un tiempo (o a que el jugador supere un QTE) para volver a la pista. Eso es un estado. Sin embargo, una bonificación de velocidad no cambia lo que hace el coche, sino que afecta a sus estadísticas.</li>
+</ol>
+<p>En Super Poky Racers, el cambio de carril podría entenderse como un estado <code>SwitchingLane</code>. Sin embargo, un cambio de carril se puede realizar tanto estando parado como en marcha, y tiene su propio cooldown y validación. Si fuera un estado, habría que decidir qué pasa con <code>Moving</code> mientras dura, y no tendría una salida clara. Todo esto indica que el cambio de carril representa otra aspecto del coche y, por tanto, que debe existir por sí mismo, para lo cual desarrollamos su propio controlador: <code>LaneSwitcher</code>.</p>
+<p>:::quiz[El propulsor da al coche un efecto de turbo durante dos segundos. ¿Debería ser un estado <code>Boosted</code> de la máquina del coche?]</p>
+<ul>
+<li>[ ] Sí, porque cambia cómo se mueve el coche</li>
+<li>[x] No: el coche sigue en <code>Moving</code> mientras dura, y el turbo es un efecto con duración</li>
+<li>[ ] Sí, pero solo si dura más de un segundo</li>
+</ul>
+<p>Un coche con turbo puede estar en <code>Moving</code> o incluso descarrilar mientras dura. Como se combina con los estados en vez de excluirlos, en el juego es un efecto que gestiona el controlador de efectos del coche, no un estado.
+:::</p>
+<h2>La combinación de estados</h2>
+<p>Cuando el coche va demasiado rápido, empieza a tambalearse antes de descarrilar. La primera idea es añadir un estado <code>Wobbling</code>. Pero un coche se tambalea <strong>mientras</strong> se mueve, y lo que hace al moverse no cambia. Si <code>Wobbling</code> fuera un estado más, habría que duplicar <code>Moving</code> dentro de él.</p>
+<p>La siguiente idea es peor: <code>MovingWobbling</code>. En cuanto aparece un nombre así, la máquina está modelando dos cosas a la vez. Con dos dimensiones de dos estados cada una ya hay cuatro combinaciones; con una tercera, ocho. Este problema se conoce como :term[explosión de estados]{id=“explosion-de-estados”}: cada aspecto nuevo multiplica los estados en lugar de sumarlos, y las transiciones entre ellos crecen todavía más rápido.</p>
+<p>Para evitar este problema, la mejor solución suele ser incluir otra máquina de estados, manteniendo así, cada una con un propósito claro:</p>
+<ul>
+<li>La del coche responde a <em>qué está haciendo</em>: <code>Idle</code>, <code>Moving</code>, <code>Derailed</code>.</li>
+<li>La de sobrevelocidad responde a <em>cómo de estable va</em>: <code>Normal</code>, <code>Wobble</code>, <code>Derailment</code>.</li>
+</ul>
+<p>Las dos se actualizan cada frame sin saber la una de la otra, salvo en el descarrilamiento: la de sobrevelocidad le pide al coche que descarrile y, cuando el coche se recupera, él devuelve la de sobrevelocidad a <code>Normal</code>.</p>
+<h2>Usos menos habituales</h2>
+<p>Las máquinas de estado suelen usarse para definir la inteligencia artificial de un NPC, o determinar las reglas de comportamiento de un objeto, como en un controlador de personaje. A continuación, describiré algunos casos de uso particulares de las FSMs en Super Poky Racers.</p>
+<h3>Controlador de cámara</h3>
+<p>En Super Poky Racers, la cámara tiene cinco comportamientos, cada uno asociado a un estado:</p>
+<ul>
+<li>seguir al jugador</li>
+<li>seguir un spline</li>
+<li>cámara libre</li>
+<li>dos modos de espectador.
+Estos estados, a diferencia de los que he presentado anteriormente, no tienen ninguna transición interna: todos los <code>GetNextState</code> devuelven el estado actual.</li>
+</ul>
+<pre><code class="language-csharp">public void SetCameraMode(CameraStates mode, SplineContainer spline = null)
+{
+    if (_splineCart != null &amp;&amp; spline != null)
+        _splineCart.Spline = spline;
+
+    _stateMachine.ForceTransitionTo(mode);
+}
+</code></pre>
+<p>Quien cambia de modo es siempre un elemento externo: que suele ser un nodo de cinemática o el modo espectador. Entonces, ¿para qué una máquina? Porque cada modo usa una combinación distinta de componentes de Cinemachine (seguimiento en tercera persona, carrito sobre spline, mirar a un punto…). Al entrar, cada estado enciende los suyos y apaga los demás, facilitando la configuración y asegurando que nunca queden dos modos activos ni restos del anterior.</p>
+<p>Cabe mencionar que esto rompe las reglas de una máquina de estados. Una solución más correcta sería que la máquina escuche eventos que determinen el resultado de <code>GetNextState</code>.</p>
+<h3>El descarrilamiento</h3>
+<p>La máquina de estados del descarrilamiento no modela a un personaje, sino una <strong>progresión</strong>. Pasarse de velocidad podría ser una simple comprobación: si <code>velocidad &gt; máxima</code>, descarrila. Sería correcto, pero lo más probable es que el jugador no sepa qué ha hecho mal hasta que ya ha pasado.</p>
+<p>Aquí la máquina no sólo sirve para organizar el código, sino tambien para mejorar la experiencia del jugador. Dos de sus propiedades nos sirven para eso:</p>
+<ul>
+<li><strong>Las transiciones hacen que el comportamiento sea gradual.</strong> Para descarrilar hay que pasar antes por <code>Wobble</code>, y para llegar de <code>Wobble</code> a <code>Derailment</code> hay que aguantar un tiempo por encima del límite. Como no hay ninguna transición directa de <code>Normal</code> a <code>Derailment</code>, el descarrilamiento nunca llega por sorpresa.</li>
+<li><strong>Cada estado comunica algo.</strong> Como solo hay uno activo, el estado actual <em>es</em> la información que necesita el jugador: en <code>Normal</code> no pasa nada, en <code>Wobble</code> el coche avisa y en <code>Derailment</code> ya es tarde.</li>
+</ul>
+<p>El jugador no ve la máquina, pero sí nota sus reglas: siempre hay un aviso y un margen para reaccionar antes de que el castigo llegue.</p>
+<h3>El cohete</h3>
+<p>El cohete es un objeto usable con tres fases: <code>Launching</code> (sube durante un instante), <code>Scanning</code> (busca un objetivo que no sea quien lo lanzó) y <code>Locked</code> (lo persigue). La explosión no es un cuarto estado: al chocar, el cohete vuelve al pool y aparece un objeto de explosión, que además sirve para otras cosas.</p>
+<p>Como el cohete sale de un pool y se reutiliza, su máquina no empieza de cero cada vez: al activarse, <code>OnEnable</code> fuerza la transición a <code>Launching</code>.</p>
+<h3>Cuando basta con un enum</h3>
+<p>No todo necesita la base genérica. El QTE que aparece al descarrilar tiene cuatro estados (<code>Waiting</code>, <code>Active</code>, <code>Succeeded</code>, <code>Failed</code>), pero ninguno tiene comportamiento propio: solo marcan si se aceptan pulsaciones y si ya está resuelto.</p>
+<pre><code class="language-csharp">public void Tick(float deltaTime)
+{
+    if (IsResolved) return;
+
+    Elapsed += deltaTime;
+    if (State == DerailQteState.Waiting &amp;&amp; Elapsed &gt;= StartDelay)
+        State = DerailQteState.Active;
+
+    if (State == DerailQteState.Active &amp;&amp; Elapsed &gt;= StartDelay + Window)
+        Resolve(DerailQteGrade.Failed);
+}
+</code></pre>
+<p>Es una máquina de estados igual, solo que cabe en diez líneas. Con la base genérica serían cuatro clases, una blackboard y un controlador, añadiendo más trabajo y fragmentación para el mismo resultado.</p>
+<p>:::quiz[¿Cuál de estos casos se resolvería mejor con un enum que con la máquina genérica?]</p>
+<ul>
+<li>[ ] Un enemigo que patrulla, persigue al jugador y huye cuando tiene poca vida</li>
+<li>[x] Una puerta que puede estar abierta, cerrada o bloqueada, y que solo cambia su animación</li>
+<li>[ ] Un jefe con tres fases de ataque distintas</li>
+</ul>
+<p>La puerta no tiene comportamiento propio en cada estado: es una etiqueta que la animación consulta. El enemigo y el jefe hacen cosas distintas en cada estado, y ahí las clases separadas compensan.
+:::</p>
+<h2>¿Cuándo se queda corta?</h2>
+<p>Una máquina de estados funciona mientras los estados se excluyan y las transiciones se puedan contar. Hay dos señales de que el problema ya es otro:</p>
+<ul>
+<li><strong>Las transiciones dependen de prioridades.</strong> Si desde casi cualquier estado se puede saltar a casi cualquier otro según qué condición pese más, las transiciones se multiplican. Un <strong>árbol de comportamiento</strong> ordena esas prioridades de forma jerárquica y permite reutilizar ramas.</li>
+<li><strong>Las opciones cambian durante la partida.</strong> Qué objeto usar depende de qué objetos lleve el coche en ese momento, y no se pueden escribir todas las combinaciones como estados. <strong>GOAP</strong> deja que cada objeto declare qué consigue y planifica en tiempo real.</li>
+</ul>
+<p>Por eso los rivales de Super Poky Racers no son una gran máquina de estados: deciden con un árbol de comportamiento que delega en GOAP qué objeto usar, y la máquina del coche se queda con lo que de verdad son estados excluyentes. Como regla práctica, si una máquina pasa de cinco o seis estados, suele ser porque está modelando dos cosas al mismo tiempo.</p>
+]]></content>
+        <author>
+            <name>Sandro Alvoz</name>
+            <email>sandroalvoza@gmail.com</email>
+            <uri>https://sandroalvoz.github.io/</uri>
+        </author>
+        <category label="Unity"/>
+        <category label="C#"/>
+        <category label="FSM"/>
+        <category label="IA"/>
+        <category label="Arquitectura"/>
+        <published>2026-11-27T00:00:00.000Z</published>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Objetos usables en Super Poky Racers]]></title>
         <id>https://sandroalvoz.github.io/posts/item-usable-escalable/</id>
@@ -111,7 +400,7 @@ public abstract class Usable : Item, IUsable
 <li><code>IGoapItem</code> dice <strong>cuándo</strong> conviene usarlo.</li>
 </ul>
 <p>Son dos abstracciones distintas para dos necesidades distintas. El control del jugador solo trabaja con <code>IUsable</code>, y el planificador nunca llama a <code>Use</code>: cuando la IA decide usar un objeto, lo hace a través de <code>IUsable</code>, igual que el jugador. De esta manera, podemos determinar el comportamiento de los agentes manteniendo una correcta escalabilidad y separación de responsabilidades.</p>
-<p>Es lo que propone el principio de <strong>:term[segregación de interfaces]{id=“segregacion-de-interfaces”}</strong>, la I de :term[SOLID]: ninguna clase debería depender de métodos que no usa. El jugador solo necesita <code>Use</code>, y por eso solo ve <code>IUsable</code>.
+<p>Es lo que propone el principio de <strong>:term[segregación de interfaces]{id=“segregacion-de-interfaces”}</strong>, la I de :term[SOLID]: ninguna clase debería depender de métodos que no usa.
 :::</p>
 <p>::::</p>
 <h2>El contexto de uso: <code>UsableContext</code></h2>
@@ -186,7 +475,7 @@ if (item is IUsable usable)
 }
 </code></pre>
 <p>En el juego, esta petición pasa por el sistema de comandos. Aquí se muestra el camino directo al pool genérico.</p>
-<p>Separar las dos cosas no es solo una cuestión de orden. Como el asset es compartido, no puede guardar nada de un uso concreto: si <code>RocketItem</code> guardara el objetivo del cohete, dos coches que lo lanzaran a la vez se lo pisarían. Todo lo que trasciende a la llamada a <code>Use</code> (un objetivo, un temporizador, una posición) vive en lo que se invoca, que tiene una instancia por uso.</p>
+<p>Separarlas es necesario porque el asset es compartido y no puede guardar nada de un uso concreto: si <code>RocketItem</code> guardara el objetivo del cohete, dos coches que lo lanzaran a la vez se lo pisarían. Todo lo que trasciende a la llamada a <code>Use</code> (un objetivo, un temporizador, una posición) vive en lo que se invoca, que tiene una instancia por uso.</p>
 <p>No todos los objetos invocan algo. El adhesivo especial no crea nada en el mundo, sino que aplica un efecto a través del controlador de efectos del coche. Sin embargo, la idea es la misma: el objeto usable decide qué pasa, y el resultado de ese uso queda en manos de otro elemento.</p>
 <p>:::quiz[Queremos que la trampa tirachinas desaparezca a los diez segundos de colocarse. ¿Dónde debería guardarse ese temporizador?]</p>
 <ul>
@@ -299,13 +588,13 @@ if (item is IUsable usable)
 <p>Todo lo anterior se reduce a una decisión: que cada pieza haga una sola cosa y se relacione con las demás solo a través de abstracciones. Esa separación tiene ventajas claras:</p>
 <ul>
 <li><strong>Los cambios son locales.</strong> Un objeto nuevo es un archivo nuevo. Varias personas pueden añadir objetos a la vez sin tocar los mismos archivos, y un error en un objeto no rompe los demás.</li>
-<li><strong>Los sistemas se reaprovechan.</strong> El pool, los efectos y el grafo de la pista no se hicieron para los objetos y tienen otros usuarios. Mejorar uno de ellos mejora a todos los que lo usan.</li>
+<li><strong>Los sistemas se reaprovechan.</strong> Los objetos delegan su trabajo en el pool, los efectos o el grafo de la pista, en lugar de reimplementarlo.</li>
 <li><strong>El jugador y la IA son intercambiables.</strong> Los dos usan los objetos de la misma forma, así que un objeto que funciona para uno funciona para el otro.</li>
 </ul>
 <p>También tiene costes:</p>
 <ul>
 <li><strong>Hay que saltar entre más archivos para entender un objeto.</strong> Para seguir lo que hace el cohete hay que pasar por <code>RocketItem</code>, el pool, <code>RocketObject</code>, sus estados, el sensor y el wrapper de steering. Depurar un comportamiento que cruza varias piezas puede requerir más tiempo y carga cognitiva que leer una clase grande.</li>
-<li><strong>Un sistema compartido es un punto de cambio delicado.</strong> Si cambia el controlador de efectos, cambian a la vez los objetos de efecto, las sinergias y la invulnerabilidad tras descarrilar. Reaprovechar también es depender.</li>
+<li><strong>Un sistema compartido es un punto de cambio delicado.</strong> Si cambia el controlador de efectos, cambian a la vez los objetos de efecto, las sinergias y la invulnerabilidad tras descarrilar.</li>
 <li><strong>La estructura puede pesar más que la lógica.</strong> La lógica del adhesivo son cuatro líneas, pero necesita una clase, un asset, una entrada en la base de datos y su parte de <code>IGoapItem</code>.</li>
 </ul>
 <h2>Aspectos de mejora</h2>
@@ -355,7 +644,7 @@ Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyect
 <p>En ejecución, una o varias escenas principales conviven con las escenas de contenido, y sus objetos pueden interactuar los unos con los otros sin problemas.</p>
 <p>Los datos de partida viven directamente en la escena persistente, así que la clase estática desaparece. La transición entre niveles baja de trece segundos a unos tres y medio, y en la build la escena persistente se carga mientras se muestra el menú principal, así que el jugador no nota la carga inicial.</p>
 <h2>¿Qué es la carga aditiva?</h2>
-<p>La <strong>carga aditiva</strong> consiste en tener varias escenas cargadas al mismo tiempo. Lo habitual es combinar una o varias escenas principales, con los sistemas, y una o varias escenas de contenido.</p>
+<p>La <strong>carga aditiva</strong> consiste en tener varias escenas cargadas al mismo tiempo.</p>
 <p>La <strong>carga asíncrona</strong> consiste en cargar e inicializar una escena mientras el juego sigue funcionando, en lugar de congelarlo hasta que termine. Suelen ir juntas, pero son cosas distintas: puedes cargar de forma aditiva sin que sea asíncrona, y viceversa.</p>
 <h2>¿Qué ocupa memoria y qué no?</h2>
 <p>Con varias escenas cargadas a la vez, conviene tener claro qué libera memoria y qué no:</p>
@@ -389,7 +678,7 @@ Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyect
 <li>Un juego con varios tipos de nivel, como <em>Cuphead</em> (plataformas, jefes, niveles de vuelo), encaja con tres capas: una escena persistente con el contexto de la partida, una escena principal por tipo de nivel con su lógica y una escena de contenido por nivel.</li>
 <li>A veces la carga lenta no tiene nada que ver con las escenas, sino con la cantidad de datos que hay que procesar al entrar. Antes de reorganizar nada, hay que medir.</li>
 </ul>
-<p>Por otra parte, esconder la carga detrás de una transición o una animación también es una solución válida. Antes de dedicar tiempo a optimizar o reestructurar todo un proyecto, debemos preguntarnos si el jugador lo nota.</p>
+<p>Por último, no todo tiene que optimizarse: si el jugador no nota la carga, reestructurar el proyecto puede no merecer la pena.</p>
 <h2>¿Cómo se carga y descarga?</h2>
 <p>::::walkthrough{title=“Cargar y descargar una escena de forma aditiva”}</p>
 <p>:::step{title=“Empezar la carga”}</p>
@@ -512,7 +801,7 @@ Sin embargo, esto trae consigo varios problemas, que crecen junto con el proyect
 <p>En el caso de <a href="/projects/super-poky-racers/">Super Poky Racers</a>, había una dificultad añadida: una gran parte de lo que el jugador consigue (objetos, equipamiento) son :term[Scriptable Objects]{id=“scriptable-object”}. Estos son assets del proyecto, y un archivo no puede guardar un asset de la misma manera en que guarda un <code>int</code> o un <code>string</code>. En esta publicación, veremos las distintas complicaciones y técnicas para crear un sistema de guardado.</p>
 <h2>Tres formas de guardar una partida</h2>
 <h3>La base común: los datos son un objeto</h3>
-<p>Antes de comparar opciones, cabe mencionar que todas ellas tienen algo en común y que debemos tener en cuenta: <strong>la información que se guarda es un objeto</strong>.</p>
+<p>Antes de comparar opciones, hay algo que todas tienen en común: <strong>la información que se guarda es un objeto</strong>.</p>
 <p>Siguiendo los principios de la :term[programación orientada a objetos], los datos que deben sobrevivir al cerrar el juego se agrupan en una clase. Mientras se juega, el juego trabaja con una instancia de esa clase. Guardar consiste en escribir esa instancia en un archivo, y cargar una partida es el proceso inverso: leer lo escrito y reconstruir una instancia a partir de su información.</p>
 <p>Para comparar las tres opciones, usaremos la misma clase:</p>
 <pre><code class="language-csharp">[Serializable]
@@ -547,10 +836,10 @@ public class ProgressAsset : ScriptableObject
 }
 </code></pre>
 <p><a href="#L4">El progreso</a> es la misma clase de antes, como campo del asset. Cualquier script que tenga una referencia al asset puede <a href="#L6-9">modificarlo</a>.</p>
-<p>En el editor, el cambio se hace sobre el asset cargado, que sigue en memoria al salir del Play Mode y puede acabar escrito en su <code>.asset</code>. En una build no hay nada que lo escriba.
+<p>En el editor, el cambio se hace sobre el asset cargado, que sigue en memoria al salir del Play Mode y puede acabar escrito en su <code>.asset</code>.
 :::</p>
 <p>::::</p>
-<p>Lo que ocurre en el editor es que estás modificando el propio asset del proyecto. En una build, los assets se empaquetan dentro del juego y su contenido en disco es inmutable: los cambios viven en memoria hasta que se cierra el juego, y luego se pierden completamente al detener la ejecución. Además, en el editor cada prueba ensucia el asset, y ese “progreso” acaba en el control de versiones.</p>
+<p>En una build, los assets se empaquetan dentro del juego y su contenido en disco es inmutable: los cambios viven en memoria hasta que se cierra el juego, y luego se pierden. Además, en el editor cada prueba ensucia el asset, y ese “progreso” acaba en el control de versiones.</p>
 <p>Un Scriptable Object sirve para datos definidos por el diseñador, no para datos que el jugador pueda generar o modificar. En Super Poky Racers hay uno con un perfil dentro, <code>ProfileContainer</code>, pero se usa para definir la información inicial de una partida nueva y de las partidas de prueba.</p>
 <p>:::quiz[Guardas el progreso del jugador modificando un Scriptable Object, y en el editor funciona. ¿Qué pasa en una build?]</p>
 <ul>
@@ -597,7 +886,7 @@ public class ProgressAsset : ScriptableObject
 <p>Tiene ventajas: ocupa poco, se lee rápido y no se puede editar con un bloc de notas. Pero también tiene costes:</p>
 <ul>
 <li><strong>No se puede leer para depurar.</strong> Si algo se guarda mal, no basta con abrir el archivo para verlo.</li>
-<li><strong>Cambiar el formato es delicado.</strong> Si se añade un campo, los archivos antiguos dejan de encajar, salvo que se gestione una versión del formato a mano.</li>
+<li><strong>Cambiar el formato es delicado.</strong> Para que los archivos antiguos sigan leyéndose, hay que gestionar a mano una versión del formato.</li>
 <li><strong>No impide hacer trampas.</strong> Que no sea legible no significa que esté protegido. Quien quiera modificarlo, puede hacerlo.</li>
 </ul>
 <p>El primer formato de Super Poky Racers estaba a medio camino: era JSON ofuscado con una operación XOR, en archivos <code>.spr</code>. No se podía leer a simple vista, pero tampoco protegía nada, y complicaba revisar qué se estaba guardando.</p>
@@ -627,13 +916,13 @@ public class ProgressAsset : ScriptableObject
     "unlockedItems": [100, 202]
 }
 </code></pre>
-<p>Cada valor va junto al nombre de su campo. Por eso el orden no importa y, si se añade un campo nuevo, los archivos antiguos siguen cargando: el campo que falta se queda con su valor por defecto.
+<p>Cada valor va junto al nombre de su campo. Por eso el orden no importa y, si se añade un campo nuevo, los archivos antiguos siguen cargando: <code>JsonUtility</code> deja con su valor por defecto los campos que faltan e ignora los que ya no existen.
 :::</p>
 <p>::::</p>
 <p>Es la opción que usa el juego ahora, por cuatro motivos:</p>
 <ul>
 <li><strong>Es fácilmente legible.</strong> Durante el desarrollo, abrir el archivo de guardado y ver exactamente qué contiene ahorra mucho tiempo de depuración.</li>
-<li><strong>Admite cambios de formato.</strong> El formato de guardado cambió muchas veces durante el proyecto. Al cargar, <code>JsonUtility</code> ignora los campos que ya no existen y deja con su valor por defecto los que faltan, así que un guardado antiguo sigue cargando.</li>
+<li><strong>Admite cambios de formato.</strong> El formato de guardado cambió muchas veces durante el proyecto, y los guardados anteriores siguieron cargando.</li>
 <li><strong>No hace falta protegerlo.</strong> Es un juego local: si alguien edita su archivo para desbloquear un objeto, no perjudica a nadie.</li>
 <li><strong>El tamaño no importa.</strong> El perfil más completo ocupa unos 16 KB.</li>
 </ul>
@@ -699,7 +988,7 @@ public class ProgressAsset : ScriptableObject
 <h2>¿Qué guarda Super Poky Racers?</h2>
 <p>Para decidir qué guardar, la pregunta es qué debe seguir ahí la próxima vez que el jugador abra el juego. En Super Poky Racers, la información a guardar se reparte en tres niveles:</p>
 <ul>
-<li><strong>Perfiles.</strong> En definitiva, son los archivos de guardado generales. En cada instalación, hay hasta cuatro perfiles, cada uno en su propio archivo (<code>profile_Profile1.json</code>…). Borrar un perfil es borrar un archivo, y si uno se corrompe, los demás no se ven afectados.</li>
+<li><strong>Perfiles.</strong> Son los archivos de guardado generales. En cada instalación, hay hasta cuatro perfiles, cada uno en su propio archivo (<code>profile_Profile1.json</code>…). Borrar un perfil es borrar un archivo, y si uno se corrompe, los demás no se ven afectados.</li>
 <li><strong>Progreso del perfil.</strong> Lo que el jugador consigue y conserva: los objetos desbloqueados, el progreso de los desafíos, los tutoriales completados, el historial de partidas y las estadísticas.</li>
 <li><strong>Partidas guardadas.</strong> Una partida en curso por modo de juego (historia y arcade), y dentro de estas: el nivel por el que va, si debe continuar en la tienda o en la carrera, y su coche, con el personaje, el equipamiento, el dinero y los objetos usables.</li>
 </ul>
@@ -966,7 +1255,7 @@ public class ItemDatabase : ScriptableObject
     return migrated;
 }
 </code></pre>
-<p>El jugador no ve ningún paso intermedio, y a partir de la siguiente carga ya está en el formato nuevo. Cambiar de formato no le cuesta su progreso.</p>
+<p>El jugador no ve ningún paso intermedio, y a partir de la siguiente carga ya está en el formato nuevo.</p>
 <h2>¿Qué haría distinto?</h2>
 <p>El sistema funciona y ha aguantado todos los cambios del proyecto, pero hay decisiones que hoy tomaría de otra manera.</p>
 <h3>Un número de versión en el archivo</h3>
@@ -983,7 +1272,7 @@ public int saveVersion; // Un archivo sin este campo se lee como versión 0
 <li><strong>Cargar con <code>try</code>/<code>catch</code>.</strong> Si el JSON no se puede leer, se intenta con el <code>.bak</code> y, si tampoco, se avisa al jugador en lugar de dejar que la excepción rompa la carga.</li>
 </ul>
 <h3>El GUID también en la build</h3>
-<p>El GUID solo se escribe desde el editor porque solo ahí existe <code>AssetDatabase</code>. La solución es que cada <code>Item</code> guarde su propio GUID en un campo serializado, rellenado desde el editor con <code>OnValidate</code> o con un script de editor que recorra los objetos. Así se empaqueta con el asset, está disponible en la build y el camino por GUID deja de funcionar solamente en el editor.</p>
+<p>Bastaría con que cada <code>Item</code> guardara su propio GUID en un campo serializado, rellenado desde el editor con <code>OnValidate</code> o con un script de editor que recorra los objetos. Así se empaqueta con el asset, está disponible en la build y el camino por GUID deja de funcionar solamente en el editor.</p>
 <h3>Los campos que sobran</h3>
 <ul>
 <li><strong><code>type</code></strong> guarda el nombre completo de la clase con su ensamblado y versión (<code>..., Items, Version=0.0.0.0, ...</code>), y el código de carga no lo usa. Además, se rompería si se renombra el ensamblado, algo que con <a href="/posts/assembly-definitions/">Assembly Definitions</a> es fácil que pase. O se usa para validar el tipo al cargar, o se quita.</li>
@@ -1558,8 +1847,7 @@ En definitiva, Service Locator funciona como un registro global en el que se alm
 <p>Hay variantes. La que yo usaba tenía una <strong>jerarquía de registros</strong>: uno global y otro a nivel de escena. Así se controla por separado qué servicios son de todo el juego y cuáles solo de una escena, y los de escena se retiran solos al descargarla.</p>
 <h2>Inyección de dependencias, más a fondo</h2>
 <p>La :term[inyección de dependencias] es un :term[patrón de diseño] que permite que una clase reciba las referencias que necesita desde un objeto externo, en lugar de crearlas o buscarlas ella misma.
-La forma más directa y reconocible de una inyección de dependencias es el :term[constructor]: si una clase recibe sus dependencias como parámetros, es imposible crearla sin proporcionárselas, y cualquiera que lea su firma sabe exactamente qué necesita para funcionar.
-A diferencia del Service Locator, donde el usuario solicita servicios a un registro, en la inyección de dependencias, se le suministran directamente sin necesidad de que los solicite, ni de que conozca ningún registro.</p>
+La forma más directa y reconocible de una inyección de dependencias es el :term[constructor]: si una clase recibe sus dependencias como parámetros, es imposible crearla sin proporcionárselas, y cualquiera que lea su firma sabe exactamente qué necesita para funcionar.</p>
 <p>En el Service Locator, el usuario <strong>pide</strong> el servicio a un registro; mientras que en la Inyección de dependencias, se le <strong>entrega</strong> al usuario sin que éste lo pida ni sepa que existe un registro.</p>
 <h3>El problema de Unity: no hay constructores</h3>
 <p>Los componentes <code>MonoBehaviour</code> los instancia el motor, así que no pueden recibir nada por constructor. Las alternativas sin :term[framework] tienen pegas:</p>
